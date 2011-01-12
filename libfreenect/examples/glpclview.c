@@ -42,29 +42,34 @@
 #endif
 #include <stdlib.h>
 #include <math.h>
+#include <unistd.h>
+
+#define RCW_TO_IDX(R, C, W) (R*W + C)
 
 int window;
 GLuint gl_rgb_tex;
-GLuint saved_points[2];
-int cur_saved_list = 0;
 int mx=-1,my=-1;        // Prevous mouse coordinates
 int rotangles[2] = {0}; // Panning angles
 float zoom = 1;         // zoom factor
 int color = 1;          // Use the RGB texture or just draw it as color
+int count = 0;
 
-// http://pubs.opengroup.org/onlinepubs/009695399/functions/sleep.html
-// According to the link above, the semantics of UNIX sleep() is as follows:
-// "If sleep() returns because the requested time has elapsed, the value
-//  returned shall be 0. If sleep() returns due to delivery of a signal, the
-//  return value shall be the "unslept" amount (the requested time minus the
-//  time actually slept) in seconds."
-// The following function does not implement the return semantics, but
-// will do for now... A proper implementation would require Performance
-// Counters before and after the forward call to the Windows Sleep()...
-unsigned sleep(unsigned seconds)
-{
-    //Sleep(seconds*1000);  // The Windows Sleep operates on milliseconds
-    return(0);
+typedef struct llnode {
+    struct llnode *next, *prev;
+    void *data;
+} llnode;
+
+llnode *head = NULL, *tail = NULL;
+
+void llAddLast(void *data) {
+    llnode *node = malloc(sizeof(llnode));
+    node->data = data;
+
+    if (head == NULL) head = node;
+    if (tail != NULL) tail->next = node;
+    node->prev = tail;
+    node->next = NULL;
+    tail = node;
 }
 
 // Do the projection from u,v,depth to X,Y,Z directly in an opengl matrix
@@ -85,6 +90,41 @@ void LoadVertexMatrix()
         -cx/fx, cy/fy, -1, b
     };
     glMultMatrixf(mat);
+}
+
+GLfloat* multiplyMatrixTransposed(GLfloat* mat1, GLfloat* mat2,
+    int m1w, int m1h, int m2h)
+{
+    int i=0, j=0, a=0;
+    GLfloat* result = malloc((sizeof(float) * m1h * m2h));
+
+    for(i=0; i<m1h; i++)
+    {
+        for(j=0; j<m2h; j++)
+        {
+            float newVal = 0;
+            for(a = 0; a < m1w; a++)
+            {
+                newVal += (mat1[RCW_TO_IDX(i,a,m1w)] * mat2[RCW_TO_IDX(j,a,m1w)]);
+            }
+            result[RCW_TO_IDX(i,j,m2h)] = newVal;
+        }
+    }
+
+    return result;
+}
+
+void displayMatrix(GLfloat* mat, int h, int w)
+{
+    int i=0;
+
+    for(i=0; i<h*w; i++)
+    {
+        if(i % w == 0 && i != 0)
+            printf("\n");
+        printf("%f ", mat[i]);
+    }
+    printf("\n");
 }
 
 
@@ -135,27 +175,40 @@ void DrawGLScene()
     char *rgb = 0;
     uint32_t ts;
     if (freenect_sync_get_depth((void**)&depth, &ts, 0, FREENECT_DEPTH_11BIT) < 0)
-	no_kinect_quit();
+        no_kinect_quit();
     if (freenect_sync_get_video((void**)&rgb, &ts, 0, FREENECT_VIDEO_RGB) < 0)
-	no_kinect_quit();
+        no_kinect_quit();
 
     static unsigned int indices[480][640];
-    static short xyz[480][640][3];
+    static GLfloat xyz[480*640][4];
     int i,j;
     for (i = 0; i < 480; i++) {
         for (j = 0; j < 640; j++) {
-            xyz[i][j][0] = j;
-            xyz[i][j][1] = i;
-            xyz[i][j][2] = depth[i*640+j];
-            indices[i][j] = i*640+j;
+            int idx = RCW_TO_IDX(i,j,640);
+            xyz[idx][0] = j;
+            xyz[idx][1] = i;
+            xyz[idx][2] = depth[idx];
+            xyz[idx][3] = 1;
+            indices[i][j] = idx;
         }
     }
 
-    glCallList(saved_points[cur_saved_list]);
+    float fx = 594.21f;
+    float fy = 591.04f;
+    float a = -0.0030711f;
+    float b = 3.3309495f;
+    float cx = 339.5f;
+    float cy = 242.7f;
+    GLfloat mat[16] = {
+        1/fx,     0,  0, 0,
+        0,    -1/fy,  0, 0,
+        0,       0,  0, a,
+        -cx/fx, cy/fy, -1, b
+    };
 
- //   cur_saved_list = !cur_saved_list;
-    glNewList(saved_points[cur_saved_list], GL_COMPILE_AND_EXECUTE);
+    GLfloat *convertedXYZ = multiplyMatrixTransposed(mat, (GLfloat*)xyz, 4, 4, 480*640);
 
+    llAddLast((void*)convertedXYZ);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -180,9 +233,9 @@ void DrawGLScene()
     glPointSize(1);
 
     glEnableClientState(GL_VERTEX_ARRAY);
-    glVertexPointer(3, GL_SHORT, 0, xyz);
+    glVertexPointer(4, GL_FLOAT, 0, xyz);
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glTexCoordPointer(3, GL_SHORT, 0, xyz);
+    glTexCoordPointer(4, GL_FLOAT, 0, xyz);
 
     if (color)
         glEnable(GL_TEXTURE_2D);
@@ -193,7 +246,11 @@ void DrawGLScene()
     glDrawElements(GL_POINTS, 640*480, GL_UNSIGNED_INT, indices);
     glPopMatrix();
     glDisable(GL_TEXTURE_2D);
-    glEndList();
+
+    printf("..");
+    sleep(1);
+    count++;
+    printf("Num captures: %d\n", count);
 
     glutSwapBuffers();
 }
@@ -226,14 +283,6 @@ void InitGL(int Width, int Height)
 {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glEnable(GL_DEPTH_TEST);
-
-    saved_points[0] = glGenLists(1);
-    saved_points[1] = glGenLists(1);
-    glNewList(saved_points[0], GL_COMPILE); //compile the new list
-    glEndList(); //end the list
-    glNewList(saved_points[1], GL_COMPILE); //compile the new list
-    glEndList(); //end the list
-
     glGenTextures(1, &gl_rgb_tex);
     glBindTexture(GL_TEXTURE_2D, gl_rgb_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -265,3 +314,48 @@ int main(int argc, char **argv)
     return 0;
 }
 
+/*
+int main(int argc, char **argv)
+{
+
+    GLfloat mat1[16] = {
+        1.455,     0,  0, 0,
+        0,    -1.441,  0, 0,
+        0,       0,  0, 4.55,
+        -2.33, 2.33, -1, 4
+    };
+
+    GLfloat mat2[16] = {
+        0, 0, 0, 1,
+        0, 0, 1, 0,
+        0, 1, 0, 0,
+        1, 0, 0, 0 
+    };
+
+    GLfloat ID[16] = {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1 
+    };
+
+    GLfloat mat3[6] = {
+        1, 2, 3,
+        2, 3, 4
+    };
+
+    GLfloat mat4[6] = {
+        3, 3,
+        2, 3,
+        8, 3
+    };
+
+    GLfloat* result = multiplyMatrix(mat3, mat4, 3, 2, 2);
+
+    printf("\n");
+    displayMatrix(result, 2, 2);
+    printf("\n");
+
+    return 0;
+}
+*/

@@ -121,8 +121,8 @@ static int stream_process(freenect_context *ctx, packet_stream *strm, uint8_t *p
 		}
 		// check data length
 		if (datalen > expected_pkt_size) {
-			FN_LOG(l_warning, "[Stream %02x] Expected max %d data bytes, but got %d. Dropping...\n",
-			       strm->flag, expected_pkt_size, datalen);
+			//FN_LOG(l_warning, "[Stream %02x] Expected max %d data bytes, but got %d. Dropping...\n",
+			//       strm->flag, expected_pkt_size, datalen);
 			return got_frame_size;
 		}
 		if (datalen < expected_pkt_size)
