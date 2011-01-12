@@ -63,7 +63,7 @@ int color = 1;          // Use the RGB texture or just draw it as color
 // Counters before and after the forward call to the Windows Sleep()...
 unsigned sleep(unsigned seconds)
 {
-    Sleep(seconds*1000);  // The Windows Sleep operates on milliseconds
+    //Sleep(seconds*1000);  // The Windows Sleep operates on milliseconds
     return(0);
 }
 
