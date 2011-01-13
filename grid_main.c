@@ -30,6 +30,7 @@
 #include "libfreenect_sync.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #if defined(__APPLE__)
 #include <GLUT/glut.h>
@@ -45,7 +46,11 @@
 #include <unistd.h>
 
 #define RCW_TO_IDX(R, C, W) (R*W + C)
-#define GRIDSIZE 25
+#define GRIDSIZE 480
+#define ROBOT_RADIUS 15.0f // in centimeters. This is a guess
+#define PI 3.141592f
+#define ENCODER_CLICKS_PER_CM 500.0f
+#define TOP_SPEED_CM_PER_S 30.0f
 
 int window;
 GLuint gl_rgb_tex;
@@ -54,8 +59,13 @@ int rotangles[2] = {0}; // Panning angles
 float zoom = 1;         // zoom factor
 int color = 1;          // Use the RGB texture or just draw it as color
 int count = 0;
+int die = 0;
+
+int motor_l_speed = 0;
+int motor_r_speed = 0;
 
 int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
+short grid_image[GRIDSIZE][GRIDSIZE][3];
 
 typedef struct llnode {
     struct llnode *next, *prev;
@@ -105,11 +115,22 @@ void LoadVertexMatrix()
 }
 
 /**
+ * Returns an angle between 0 and 2 PI.
+ */
+void putAngleInBounds(float * theta)
+{
+    while(*theta < 0)
+        *theta += 2 * PI;
+    while(*theta > 2 * PI)
+        *theta -= 2 * PI;
+}
+
+/**
  * Multiplies two matrices with the specified dimensions.
  * m1w is the width of mat1, etc.
  */
 GLfloat* multiplyMatrix(GLfloat* mat1, GLfloat* mat2,
-    int m1w, int m1h, int m2w)
+        int m1w, int m1h, int m2w)
 {
     int i=0, j=0, a=0;
     GLfloat* result = malloc((sizeof(float) * m1h * m2w));
@@ -134,7 +155,7 @@ GLfloat* multiplyMatrix(GLfloat* mat1, GLfloat* mat2,
  * A quick way to transpose the second matrix, then multiply matrices as above.
  */
 GLfloat* multiplyMatrixTransposed(GLfloat* mat1, GLfloat* mat2,
-    int m1w, int m1h, int m2h)
+        int m1w, int m1h, int m2h)
 {
     int i=0, j=0, a=0;
     GLfloat* result = malloc((sizeof(float) * m1h * m2h));
@@ -181,10 +202,11 @@ void left(float dist)
 void displayGrid()
 {
     int i=0, j=0;
-    int curX = (int)(-cur_pos->x + (GRIDSIZE/2) - .5);
-    int curY = (int)(-cur_pos->y + (GRIDSIZE/2) - .5);
-    
+    int curX = (int)(-(cur_pos->x/30) + (GRIDSIZE/2) - .5);
+    int curY = (int)(-(cur_pos->y/30) + (GRIDSIZE/2) - .5);
+
     printf("Current position: [%f %f %f]\n", cur_pos->x, cur_pos->y, cur_pos->theta);
+    printf("Current speed: [%d %d]\n", motor_l_speed, motor_r_speed);
 
     for(i=0; i<GRIDSIZE; i++)
     {
@@ -192,6 +214,8 @@ void displayGrid()
         {
             if(i==curX && j==curY)
                 printf("X ");
+            else if(i==GRIDSIZE/2-1 && j==GRIDSIZE/2-1)
+                printf("O ");
             else
                 printf(". ");
 
@@ -242,6 +266,7 @@ void no_kinect_quit(void)
     printf("Error: Kinect not connected?\n");
     exit(1);
 }
+
 
 void DrawGLScene()
 {
@@ -365,74 +390,154 @@ void InitGL(int Width, int Height)
 }
 
 /*int main(int argc, char **argv)
-{
-    glutInit(&argc, argv);
+  {
+  glutInit(&argc, argv);
 
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA | GLUT_DEPTH);
-    glutInitWindowSize(640, 480);
-    glutInitWindowPosition(0, 0);
+  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA | GLUT_DEPTH);
+  glutInitWindowSize(640, 480);
+  glutInitWindowPosition(0, 0);
 
-    window = glutCreateWindow("LibFreenect");
+  window = glutCreateWindow("LibFreenect");
 
-    glutDisplayFunc(&DrawGLScene);
-    glutIdleFunc(&DrawGLScene);
-    glutReshapeFunc(&ReSizeGLScene);
-    glutKeyboardFunc(&keyPressed);
-    glutMotionFunc(&mouseMoved);
-    glutMouseFunc(&mousePress);
+  glutDisplayFunc(&DrawGLScene);
+  glutIdleFunc(&DrawGLScene);
+  glutReshapeFunc(&ReSizeGLScene);
+  glutKeyboardFunc(&keyPressed);
+  glutMotionFunc(&mouseMoved);
+  glutMouseFunc(&mousePress);
 
-    InitGL(640, 480);
+  InitGL(640, 480);
 
-    glutMainLoop();
+  glutMainLoop();
 
-    return 0;
-}*/
+  return 0;
+  }*/
 
 /*
-int main(int argc, char **argv)
+   int main(int argc, char **argv)
+   {
+
+   GLfloat mat1[16] = {
+   1.455,     0,  0, 0,
+   0,    -1.441,  0, 0,
+   0,       0,  0, 4.55,
+   -2.33, 2.33, -1, 4
+   };
+
+   GLfloat mat2[16] = {
+   0, 0, 0, 1,
+   0, 0, 1, 0,
+   0, 1, 0, 0,
+   1, 0, 0, 0 
+   };
+
+   GLfloat ID[16] = {
+   1, 0, 0, 0,
+   0, 1, 0, 0,
+   0, 0, 1, 0,
+   0, 0, 0, 1 
+   };
+
+   GLfloat mat3[6] = {
+   1, 2, 3,
+   2, 3, 4
+   };
+
+   GLfloat mat4[6] = {
+   3, 3,
+   2, 3,
+   8, 3
+   };
+
+   GLfloat* result = multiplyMatrix(mat3, mat4, 3, 2, 2);
+
+   printf("\n");
+   displayMatrix(result, 2, 2);
+   printf("\n");
+
+   return 0;
+   }
+ */
+
+void set_motor_l(int speed)
 {
+    if(speed < -100 || speed > 100)
+    {
+        printf("Speed out of bounds.\n");
+        die = 1;
+        return;
+    }
 
-    GLfloat mat1[16] = {
-        1.455,     0,  0, 0,
-        0,    -1.441,  0, 0,
-        0,       0,  0, 4.55,
-        -2.33, 2.33, -1, 4
-    };
-
-    GLfloat mat2[16] = {
-        0, 0, 0, 1,
-        0, 0, 1, 0,
-        0, 1, 0, 0,
-        1, 0, 0, 0 
-    };
-
-    GLfloat ID[16] = {
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1 
-    };
-
-    GLfloat mat3[6] = {
-        1, 2, 3,
-        2, 3, 4
-    };
-
-    GLfloat mat4[6] = {
-        3, 3,
-        2, 3,
-        8, 3
-    };
-
-    GLfloat* result = multiplyMatrix(mat3, mat4, 3, 2, 2);
-
-    printf("\n");
-    displayMatrix(result, 2, 2);
-    printf("\n");
-
-    return 0;
+    motor_l_speed = speed;
 }
-*/
+
+void set_motor_r(int speed)
+{
+    if(speed < -100 || speed > 100)
+    {
+        printf("Speed out of bounds.\n");
+        die = 1;
+        return;
+    }
+
+    motor_r_speed = speed;
+}
+
+void set_curvature(float curvature, int speed)
+{
+    float rspeed_cm_per_s = (speed/100.0f) * TOP_SPEED_CM_PER_S *
+            (ROBOT_RADIUS * curvature + 1);
+    float rspeed = rspeed_cm_per_s * 100 / TOP_SPEED_CM_PER_S;
+    float lspeed = 2 * speed - rspeed;
+
+    printf("Rspeed cm per s: %f, Rspeed: %f, Lspeed: %f\n", rspeed_cm_per_s, rspeed, lspeed);
+
+    if(rspeed >= 100.5 || lspeed <= -100.5)
+    {
+        rspeed = 100;
+        lspeed = -100;
+    }
+    else if(rspeed <= -100.5 || lspeed >= 100.5)
+    {
+        rspeed = -100;
+        lspeed = 100;
+    }
+    set_motor_l((int)lspeed);
+    set_motor_r((int)rspeed);
+}
+
+void time_step()
+{
+    float encoder_l = ((float)motor_l_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
+    float encoder_r = ((float)motor_r_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
+    float dist_l = encoder_l / ENCODER_CLICKS_PER_CM;
+    float dist_r = encoder_r / ENCODER_CLICKS_PER_CM;
+
+    // Linear approximation
+/*    float d_theta = atan((dist_r - dist_l) / (2 * ROBOT_RADIUS));
+    printf("EncL: %f, EncR: %f, DstL: %f, DstR: %f, D theta: %f\n", encoder_l, encoder_r, dist_l, dist_r, d_theta);
+    float dy = 0;
+    float dx = (dist_r + dist_l) / 2;*/
+
+    // Circular approximation
+    float d_theta = (dist_r - dist_l)/(2 * ROBOT_RADIUS);
+    printf("EncL: %f, EncR: %f, DstL: %f, DstR: %f, D theta: %f\n", encoder_l, encoder_r, dist_l, dist_r, d_theta);
+    float r_inner = dist_l/d_theta;
+    float chord_theta = cur_pos->theta + (d_theta / 2);
+    putAngleInBounds(&chord_theta);
+
+    float chord_len = 2 * (r_inner + ROBOT_RADIUS) * sin(d_theta / 2);
+
+    float dy = chord_len * sin(chord_theta / 2);
+    float dx = chord_len * cos(chord_theta / 2);
+
+    cur_pos->x = cur_pos->x + dx;
+    cur_pos->y = cur_pos->y + dy;
+    cur_pos->theta = cur_pos->theta + d_theta;
+    putAngleInBounds(&(cur_pos->theta));
+}
+
+
 
 // To test filling in the grid.
 int main(int argc, char** argv)
@@ -441,13 +546,15 @@ int main(int argc, char** argv)
     cur_pos->x = 0;
     cur_pos->y = 0;
     cur_pos->theta = 0;
-//    cur_pos->data = {GRIDSIZE/2, GRIDSIZE/2, 0};
+    //    cur_pos->data = {GRIDSIZE/2, GRIDSIZE/2, 0};
 
-    while(1)
+    set_curvature(.01, 50);
+
+    while(!die)
     {
-        forward(.2);
+        time_step();
         displayGrid();
-        sleep(.3);
+        sleep(1);
     }
 
     return 0;
