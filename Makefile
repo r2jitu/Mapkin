@@ -6,9 +6,9 @@ TARGET = MonkeyBot
 DEFINES = 
 INCLUDES = -Ilibfreenect/include -Ilibfreenect/wrappers/c_sync 
 CPPFLAGS = $(DEFINES) $(INCLUDES)
-CFLAGS = -Wall
+CFLAGS = -Wall -g
 CXXFLAGS = $(CFLAGS)
-LDFLAGS = -Wall -rdynamic -Wl,-rpath,libfreenect/build/lib: 
+LDFLAGS = -Wall -g -rdynamic -Wl,-rpath,libfreenect/build/lib:  
 LIBS = -lGLU -lGL -lSM -lICE -lX11 -lXext -lglut -lXmu -lXi -lusb-1.0 -lpthread -lm libfreenect/build/lib/libfreenect.so.0.0.1 libfreenect/build/lib/libfreenect_sync.so.0.0.1
 
 all: mapkin grid_main
