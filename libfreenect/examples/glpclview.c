@@ -45,6 +45,7 @@
 #include <unistd.h>
 
 #define RCW_TO_IDX(R, C, W) (R*W + C)
+#define GRIDSIZE 25
 
 int window;
 GLuint gl_rgb_tex;
@@ -54,12 +55,23 @@ float zoom = 1;         // zoom factor
 int color = 1;          // Use the RGB texture or just draw it as color
 int count = 0;
 
+int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
+
 typedef struct llnode {
     struct llnode *next, *prev;
     void *data;
 } llnode;
 
 llnode *head = NULL, *tail = NULL;
+
+typedef struct pose2D {
+    float x, y, theta;
+    //float x, y, theta;
+    //GLfloat data[3]; // x, y, theta
+} pose2D;
+
+pose2D *cur_pos = NULL;
+
 
 void llAddLast(void *data) {
     llnode *node = malloc(sizeof(llnode));
@@ -92,6 +104,35 @@ void LoadVertexMatrix()
     glMultMatrixf(mat);
 }
 
+/**
+ * Multiplies two matrices with the specified dimensions.
+ * m1w is the width of mat1, etc.
+ */
+GLfloat* multiplyMatrix(GLfloat* mat1, GLfloat* mat2,
+    int m1w, int m1h, int m2w)
+{
+    int i=0, j=0, a=0;
+    GLfloat* result = malloc((sizeof(float) * m1h * m2w));
+
+    for(i=0; i<m1h; i++)
+    {
+        for(j=0; j<m2w; j++)
+        {
+            float newVal = 0;
+            for(a = 0; a < m1w; a++)
+            {
+                newVal += (mat1[RCW_TO_IDX(i,a,m1w)] * mat2[RCW_TO_IDX(a,j,m2w)]);
+            }
+            result[RCW_TO_IDX(i,j,m2w)] = newVal;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * A quick way to transpose the second matrix, then multiply matrices as above.
+ */
 GLfloat* multiplyMatrixTransposed(GLfloat* mat1, GLfloat* mat2,
     int m1w, int m1h, int m2h)
 {
@@ -123,6 +164,39 @@ void displayMatrix(GLfloat* mat, int h, int w)
         if(i % w == 0 && i != 0)
             printf("\n");
         printf("%f ", mat[i]);
+    }
+    printf("\n");
+}
+
+
+void forward(float dist)
+{
+    cur_pos->x = cur_pos->x + dist;
+}
+void left(float dist)
+{
+    cur_pos->y = cur_pos->y + dist;
+}
+
+void displayGrid()
+{
+    int i=0, j=0;
+    int curX = (int)(-cur_pos->x + (GRIDSIZE/2) - .5);
+    int curY = (int)(-cur_pos->y + (GRIDSIZE/2) - .5);
+    
+    printf("Current position: [%f %f %f]\n", cur_pos->x, cur_pos->y, cur_pos->theta);
+
+    for(i=0; i<GRIDSIZE; i++)
+    {
+        for(j=0; j<GRIDSIZE; j++)
+        {
+            if(i==curX && j==curY)
+                printf("X ");
+            else
+                printf(". ");
+
+        }
+        printf("\n");
     }
     printf("\n");
 }
@@ -290,7 +364,7 @@ void InitGL(int Width, int Height)
     ReSizeGLScene(Width, Height);
 }
 
-int main(int argc, char **argv)
+/*int main(int argc, char **argv)
 {
     glutInit(&argc, argv);
 
@@ -312,7 +386,7 @@ int main(int argc, char **argv)
     glutMainLoop();
 
     return 0;
-}
+}*/
 
 /*
 int main(int argc, char **argv)
@@ -359,3 +433,22 @@ int main(int argc, char **argv)
     return 0;
 }
 */
+
+// To test filling in the grid.
+int main(int argc, char** argv)
+{
+    cur_pos = malloc(sizeof(pose2D));
+    cur_pos->x = 0;
+    cur_pos->y = 0;
+    cur_pos->theta = 0;
+//    cur_pos->data = {GRIDSIZE/2, GRIDSIZE/2, 0};
+
+    while(1)
+    {
+        forward(.2);
+        displayGrid();
+        sleep(.3);
+    }
+
+    return 0;
+}
