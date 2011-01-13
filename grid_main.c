@@ -53,6 +53,7 @@
 #define TOP_SPEED_CM_PER_S 30.0f
 
 int window;
+GLuint gl_depth_tex;
 GLuint gl_rgb_tex;
 int mx=-1,my=-1;        // Prevous mouse coordinates
 int rotangles[2] = {0}; // Panning angles
@@ -65,13 +66,15 @@ int motor_l_speed = 0;
 int motor_r_speed = 0;
 
 int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
-short grid_image[GRIDSIZE][GRIDSIZE][3];
+char grid_image[GRIDSIZE][GRIDSIZE][3];
 
 typedef struct llnode {
     struct llnode *next, *prev;
     void *data;
 } llnode;
 
+uint8_t *depth_mid;
+uint16_t t_gamma[2048];
 llnode *head = NULL, *tail = NULL;
 
 typedef struct pose2D {
@@ -273,14 +276,57 @@ void DrawGLScene()
     short *depth = 0;
     char *rgb = 0;
     uint32_t ts;
+    int i,j;
+
     if (freenect_sync_get_depth((void**)&depth, &ts, 0, FREENECT_DEPTH_11BIT) < 0)
         no_kinect_quit();
     if (freenect_sync_get_video((void**)&rgb, &ts, 0, FREENECT_VIDEO_RGB) < 0)
         no_kinect_quit();
 
+   	for (i=0; i<FREENECT_FRAME_PIX; i++) {
+		int pval = t_gamma[depth[i]];
+		int lb = pval & 0xff;
+		switch (pval>>8) {
+			case 0:
+				depth_mid[3*i+0] = 255;
+				depth_mid[3*i+1] = 255-lb;
+				depth_mid[3*i+2] = 255-lb;
+				break;
+			case 1:
+				depth_mid[3*i+0] = 255;
+				depth_mid[3*i+1] = lb;
+				depth_mid[3*i+2] = 0;
+				break;
+			case 2:
+				depth_mid[3*i+0] = 255-lb;
+				depth_mid[3*i+1] = 255;
+				depth_mid[3*i+2] = 0;
+				break;
+			case 3:
+				depth_mid[3*i+0] = 0;
+				depth_mid[3*i+1] = 255;
+				depth_mid[3*i+2] = lb;
+				break;
+			case 4:
+				depth_mid[3*i+0] = 0;
+				depth_mid[3*i+1] = 255-lb;
+				depth_mid[3*i+2] = 255;
+				break;
+			case 5:
+				depth_mid[3*i+0] = 0;
+				depth_mid[3*i+1] = 0;
+				depth_mid[3*i+2] = 255-lb;
+				break;
+			default:
+				depth_mid[3*i+0] = 0;
+				depth_mid[3*i+1] = 0;
+				depth_mid[3*i+2] = 0;
+				break;
+		}
+	}
+ 
     static unsigned int indices[480][640];
     static GLfloat xyz[480*640][4];
-    int i,j;
     for (i = 0; i < 480; i++) {
         for (j = 0; j < 640; j++) {
             int idx = RCW_TO_IDX(i,j,640);
@@ -305,53 +351,40 @@ void DrawGLScene()
         -cx/fx, cy/fy, -1, b
     };
 
+    /*
     GLfloat *convertedXYZ = multiplyMatrixTransposed(mat, (GLfloat*)xyz, 4, 4, 480*640);
 
     llAddLast((void*)convertedXYZ);
+    */
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glLoadIdentity();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glLoadIdentity();
 
-    glPushMatrix();
-    glScalef(zoom,zoom,1);
-    glTranslatef(0,0,-3.5);
-    glRotatef(rotangles[0], 1,0,0);
-    glRotatef(rotangles[1], 0,1,0);
-    glTranslatef(0,0,1.5);
+	glEnable(GL_TEXTURE_2D);
 
-    LoadVertexMatrix();
+	glBindTexture(GL_TEXTURE_2D, gl_depth_tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, 3, 640, 480, 0, GL_RGB, GL_UNSIGNED_BYTE, depth_mid);
 
-    // Set the projection from the XYZ to the texture image
-    glMatrixMode(GL_TEXTURE);
-    glLoadIdentity();
-    glScalef(1/640.0f,1/480.0f,1);
-    LoadRGBMatrix();
-    LoadVertexMatrix();
-    glMatrixMode(GL_MODELVIEW);
+	glBegin(GL_TRIANGLE_FAN);
+	glColor4f(255.0f, 255.0f, 255.0f, 255.0f);
+	glTexCoord2f(0, 0); glVertex3f(0,0,0);
+	glTexCoord2f(1, 0); glVertex3f(570,0,0);
+	glTexCoord2f(1, 1); glVertex3f(570,428,0);
+	glTexCoord2f(0, 1); glVertex3f(0,428,0);
+	glEnd();
 
-    glPointSize(1);
+	glBindTexture(GL_TEXTURE_2D, gl_rgb_tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, 3, GRIDSIZE, GRIDSIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, grid_image);
 
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glVertexPointer(4, GL_FLOAT, 0, xyz);
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glTexCoordPointer(4, GL_FLOAT, 0, xyz);
+	glBegin(GL_TRIANGLE_FAN);
+	glColor4f(255.0f, 255.0f, 255.0f, 255.0f);
+	glTexCoord2f(0, 0); glVertex3f(570,0,0);
+	glTexCoord2f(1, 0); glVertex3f(570+428,0,0);
+	glTexCoord2f(1, 1); glVertex3f(570+428,428,0);
+	glTexCoord2f(0, 1); glVertex3f(570,428,0);
+	glEnd();
 
-    if (color)
-        glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, gl_rgb_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, 3, 640, 480, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
-
-    glPointSize(2.0f);
-    glDrawElements(GL_POINTS, 640*480, GL_UNSIGNED_INT, indices);
-    glPopMatrix();
-    glDisable(GL_TEXTURE_2D);
-
-    printf("..");
-    sleep(1);
-    count++;
-    printf("Num captures: %d\n", count);
-
-    glutSwapBuffers();
+	glutSwapBuffers();
 }
 
 void keyPressed(unsigned char key, int x, int y)
@@ -374,27 +407,54 @@ void ReSizeGLScene(int Width, int Height)
     glViewport(0,0,Width,Height);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60, 4/3., 0.3, 200);
+	glOrtho (0, 1000, 428, 0, -1.0f, 1.0f);
+    //gluPerspective(60, 4/3., 0.3, 200);
     glMatrixMode(GL_MODELVIEW);
 }
 
 void InitGL(int Width, int Height)
 {
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glEnable(GL_DEPTH_TEST);
-    glGenTextures(1, &gl_rgb_tex);
-    glBindTexture(GL_TEXTURE_2D, gl_rgb_tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    ReSizeGLScene(Width, Height);
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glDepthFunc(GL_LESS);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glShadeModel(GL_SMOOTH);
+	glGenTextures(1, &gl_depth_tex);
+	glBindTexture(GL_TEXTURE_2D, gl_depth_tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glGenTextures(1, &gl_rgb_tex);
+	glBindTexture(GL_TEXTURE_2D, gl_rgb_tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	ReSizeGLScene(Width, Height);
 }
 
-/*int main(int argc, char **argv)
+int main(int argc, char **argv)
   {
+  depth_mid = (uint8_t*)malloc(640*480*3);
+ 	int i, j;
+	for (i=0; i<2048; i++) {
+		float v = i/2048.0;
+		v = powf(v, 3)* 6;
+		t_gamma[i] = v*6*256;
+	}
+
+    for (i=0; i<GRIDSIZE; i++) {
+        for (j=0; j<GRIDSIZE; j++) {
+            grid_image[i][j][0] = 0;
+            grid_image[i][j][1] = 255;
+            grid_image[i][j][2] = 0;
+        }
+    }
+
+ 
   glutInit(&argc, argv);
 
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA | GLUT_DEPTH);
-  glutInitWindowSize(640, 480);
+  glutInitWindowSize(1000, 428);
   glutInitWindowPosition(0, 0);
 
   window = glutCreateWindow("LibFreenect");
@@ -406,12 +466,13 @@ void InitGL(int Width, int Height)
   glutMotionFunc(&mouseMoved);
   glutMouseFunc(&mousePress);
 
-  InitGL(640, 480);
+  InitGL(1000, 428);
 
   glutMainLoop();
 
   return 0;
-  }*/
+  }
+
 
 /*
    int main(int argc, char **argv)
@@ -540,6 +601,7 @@ void time_step()
 
 
 // To test filling in the grid.
+/*
 int main(int argc, char** argv)
 {
     cur_pos = malloc(sizeof(pose2D));
@@ -559,3 +621,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+*/
