@@ -14,6 +14,8 @@ int motor_l_speed = 0;
 int motor_r_speed = 0;
 
 void init_comm() {
+    if(IS_SIM) return;
+
     commfd = open(commport, O_RDWR);
     if (commfd < 0) {
         printf("Couldn't open %s\n", commport);
@@ -39,7 +41,7 @@ void init_comm() {
 }
 
 void comm_send_msg(char *msg) {
-    //if (IS_SIM) return;
+    if (IS_SIM) return;
 
     write(STDOUT_FILENO, msg, strlen(msg));
     write(commfd, msg, strlen(msg));
