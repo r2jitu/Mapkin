@@ -13,6 +13,8 @@ int main() {
         char mode = getchar();
         if (mode == 'q') {
             break;
+        } else if (mode>='0' && mode<='9') {
+            set_motors((mode-'0')*10, (mode-'0')*10);
         }
         //sleep(1);
 

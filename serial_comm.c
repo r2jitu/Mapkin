@@ -7,6 +7,9 @@
 
 #include "serial_comm.h"
 
+#define ENC_LEFT_FACTOR  1.0f
+#define ENC_RIGHT_FACTOR 1.0f
+
 static const char *commport = "/dev/ttyUSB0";
 static int commfd = -1;
 
@@ -97,5 +100,7 @@ void read_encoders(encoders *enc) {
     comm_read_msg(buf, 32);
 
     sscanf(buf, "%d %d", &enc->left, &enc->right);
+    enc->left = (int)(enc->left*ENC_LEFT_FACTOR);
+    enc->right = (int)(enc->right*ENC_RIGHT_FACTOR);
 }
  
