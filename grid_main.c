@@ -731,7 +731,7 @@ void displayGrid()
             // Unexplored (0 or anything else)
             else
             {
-                if(maze[i][j]==1)
+                if(IS_SIM && maze[i][j]==1)
                 {
                     grid_image[i][j][0] = 0;
                     grid_image[i][j][1] = 0;
