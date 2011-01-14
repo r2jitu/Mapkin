@@ -3,7 +3,7 @@ CC = gcc
 OBJDIR = obj
 TARGETDIR = .
 TARGET = MonkeyBot
-DEFINES = 
+DEFINES = -DIS_SIM=1
 INCLUDES = -Ilibfreenect/include -Ilibfreenect/wrappers/c_sync 
 CPPFLAGS = $(DEFINES) $(INCLUDES)
 CFLAGS = -Wall -g
@@ -17,7 +17,7 @@ mapkin: mapkin.c.o
 	echo "foo"
 	$(CC) -o $@ $(LDFLAGS) $(LIBS) $^
 
-grid_main: matrix_util.c.o grid_main.c.o
+grid_main: matrix_util.c.o grid_main.c.o serial_comm.c.o
 	$(CC) -o $@ $(LDFLAGS) $(LIBS) $^
 
 serial_test: serial_comm.c.o serial_test.c.o

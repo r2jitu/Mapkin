@@ -3,6 +3,7 @@
  * grid_main.h for details.
  */
 #include "grid_main.h"
+#include "serial_comm.h"
 
 int window;
 GLuint gl_depth_tex;
@@ -14,8 +15,8 @@ int color = 1;          // Use the RGB texture or just draw it as color
 int count = 0;
 int die = 0;
 
-int motor_l_speed = 0;
-int motor_r_speed = 0;
+extern int motor_l_speed;
+extern int motor_r_speed;
 
 int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
 int maze[GRIDSIZE][GRIDSIZE] = {{0}};   // For simulation, mark boundary walls.
@@ -664,31 +665,6 @@ void InitGL(int Width, int Height)
     ReSizeGLScene(Width, Height);
 }
 
-
-void set_motor_l(int speed)
-{
-    if(speed < -100 || speed > 100)
-    {
-        printf("Speed out of bounds.\n");
-        die = 1;
-        return;
-    }
-
-    motor_l_speed = speed;
-}
-
-void set_motor_r(int speed)
-{
-    if(speed < -100 || speed > 100)
-    {
-        printf("Speed out of bounds.\n");
-        die = 1;
-        return;
-    }
-
-    motor_r_speed = speed;
-}
-
 void set_curvature(float curvature, int speed)
 {
     float rspeed_cm_per_s = (speed/100.0f) * TOP_SPEED_CM_PER_S *
@@ -718,8 +694,22 @@ void time_step(int* depths)
     float a, x, y, m, m2;
     float theta;
 
-    float encoder_l = ((float)motor_l_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
-    float encoder_r = ((float)motor_r_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
+    float encoder_l;
+    float encoder_r;
+
+    if(IS_SIM)
+    {
+        encoder_l = ((float)motor_l_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
+        encoder_r = ((float)motor_r_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
+    }
+    else
+    {
+        encoders enc;
+        read_encoders(&enc);
+        encoder_l = (motor_l_speed < 0) ? -enc.left : enc.left;
+        encoder_r = (motor_r_speed < 0) ? -enc.right : enc.right;
+    }
+
     float dist_l = encoder_l / ENCODER_CLICKS_PER_CM;
     float dist_r = encoder_r / ENCODER_CLICKS_PER_CM;
 

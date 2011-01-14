@@ -67,7 +67,6 @@
 #define PI 3.141592f
 #define ENCODER_CLICKS_PER_CM 500.0f
 #define TOP_SPEED_CM_PER_S 30.0f
-#define IS_SIM 1
 #define SIM_DELAY .1f       // lower is faster
 #define MAX_ANGLE .392699   // Pi / 8. Max angle of kinect spread on one side.
 

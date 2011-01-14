@@ -10,8 +10,8 @@
 static const char *commport = "/dev/ttyUSB0";
 static int commfd = -1;
 
-static int motor_l_speed = 0;
-static int motor_r_speed = 0;
+int motor_l_speed = 0;
+int motor_r_speed = 0;
 
 void init_comm() {
     commfd = open(commport, O_RDWR);
@@ -39,6 +39,8 @@ void init_comm() {
 }
 
 void comm_send_msg(char *msg) {
+    if (IS_SIM) return;
+
     write(STDOUT_FILENO, msg, strlen(msg));
     write(commfd, msg, strlen(msg));
 }
