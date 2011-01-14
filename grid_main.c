@@ -958,7 +958,7 @@ void executePlan(int* depths)
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Just drive at a curvature
-    set_curvature(-.1, 50);
+    set_curvature(-.01, 50);
     return;
 
     // Simple scenario: we are already somewhere where we can see the goal by turning.
@@ -1347,7 +1347,7 @@ int main(int argc, char **argv)
     goal_pos->x = -1;
     goal_pos->y = -1;
 
-    set_curvature(-0.1, 50);
+    set_curvature(-0.01, 50);
     //set_curvature(.003, 50);
 
     depth_mid = (uint8_t*)malloc(640*480*3);
