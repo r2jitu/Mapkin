@@ -21,6 +21,8 @@ int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and 
 int maze[GRIDSIZE][GRIDSIZE] = {{0}};   // For simulation, mark boundary walls.
 char grid_image[GRIDSIZE][GRIDSIZE][3];
 
+short *depth = 0;
+
 typedef struct llnode {
     struct llnode *next, *prev;
     void *data;
@@ -147,12 +149,7 @@ void getDepths(int* depths)
                 depths[i] = sqrt(((x-cur_pos->x)*(x-cur_pos->x)) + ((y-cur_pos->y)*(y-cur_pos->y)));
                 break;
             }
-            if(grid[gridX][gridY] == 0)
-            {
-                //grid[gridX][gridY] = 4;
-            }
         }
-
     }
 }
 
@@ -715,7 +712,7 @@ void set_curvature(float curvature, int speed)
     set_motor_r((int)rspeed);
 }
 
-void time_step()
+void time_step(int* depths)
 {
     int i;
     float a, x, y, m, m2;
@@ -752,10 +749,9 @@ void time_step()
     cur_pos->theta = cur_pos->theta + d_theta;
     putAngleInBounds(&(cur_pos->theta));
 
-    // Read the kinect to get depths and plot this on the map
-    int depths[640] = {0};
-    //generateDepths(depths);
-    getDepths(depths);
+    if(IS_SIM)
+        getDepths(depths);
+        //generateDepths(depths);
 
     // For each depth, calculate the pose relative to our current position.
     for(i=0; i<640; i++)
@@ -836,14 +832,8 @@ void time_step()
  */
 void DrawGLScene()
 {
-    // Move the robot around, recalculate and such.
-    staleGrid();
-    time_step();
-    displayGrid();
-    sleep(SIM_DELAY);
-    //eraseGrid();
+    int depths[640] = {0};
 
-    short *depth = 0;
     char *rgb = 0;
     uint32_t ts;
     int i,j;
@@ -908,8 +898,13 @@ void DrawGLScene()
             xyz[idx][2] = IS_SIM ? 0 : depth[idx];
             xyz[idx][3] = 1;
             indices[i][j] = idx;
+
+            if(i >= 400)
+                depths[j] += depth[idx];
         }
     }
+    for(i=0; i<640; i++)
+        depths[i] = depths[i] / 80;
 
     float fx = 594.21f;
     float fy = 591.04f;
@@ -959,6 +954,13 @@ void DrawGLScene()
     glTexCoord2f(0, 1); glVertex3f(570,428,0);
     glEnd();
 
+    // Move the robot around, recalculate and such.
+    staleGrid();
+    time_step(depths);
+    displayGrid();
+    sleep(SIM_DELAY);
+    //eraseGrid();
+
     glutSwapBuffers();
 }
 
@@ -970,7 +972,7 @@ int main(int argc, char **argv)
     cur_pos->x = 0;
     cur_pos->y = 0;
     cur_pos->theta = 0;
-    set_curvature(0.002, 50);
+    set_curvature(0.002, 0);
     //set_curvature(.003, 50);
 
     depth_mid = (uint8_t*)malloc(640*480*3);
