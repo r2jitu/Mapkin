@@ -5,6 +5,15 @@
 #include "grid_main.h"
 #include "serial_comm.h"
 
+/* Colors to be displayed on the image. */
+#define EMPTY 0
+#define SEEN 1
+#define CURRENT_READING 2
+#define WALL 3
+#define BLOCKED_EMPTY 4
+#define BLOCKED_SEEN 5
+#define HAS_BEEN 6
+
 int window;
 GLuint gl_depth_tex;
 GLuint gl_rgb_tex;
@@ -296,23 +305,37 @@ void displayPose2D(pose2D *pose)
     printf("[%f, %f, %f]", pose->x, pose->y, pose->theta);
 }
 
+#define MIN(a,b) ((a)>(b)?(b):(a))
+#define MAX(a,b) ((a)<(b)?(b):(a))
+
 /**
  * Assuming the point is in the right frame (relative to the grid, with x upward
  * in the center of the grid, y left, theta counterclockwise from x
  *
- * Code: 0 is empty. 1 is wall. 2 is current sensor reading.
- * 3 is undrivable area. 4 is seen area. 5 is where the robot has already gone.
  */
 void drawOnGrid(pose2D *point)
 {
+    int i, j;
 
     int x = (-(point->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
     int y = (-(point->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
     // (GRIDSIZE/2) - (int)((point->x + .5)/CELL_WIDTH) - 1;
     //int y = (GRIDSIZE/2) - (int)((point->y + .5)/CELL_WIDTH) - 1;
 
+    for(i=MAX(0, x-ROBOT_RADIUS); i<MIN(GRIDSIZE, x+ROBOT_RADIUS); i++)
+    {
+        for(j=MAX(0, y-ROBOT_RADIUS); j<MIN(GRIDSIZE, y+ROBOT_RADIUS); j++)
+        {
+            if(sqrt((x-i)*(x-i) + (y-j)*(y-j)) <= ROBOT_RADIUS)
+            {
+                if(grid[i][j] == EMPTY || grid[i][j] == SEEN)
+                    grid[i][j] = BLOCKED_SEEN;
+            }
+        }
+    }
+
     if(x >= 0 && x < GRIDSIZE && y >= 0 && y < GRIDSIZE)
-        grid[x][y] = 2;
+        grid[x][y] = CURRENT_READING;
 }
 
 /**
@@ -325,8 +348,8 @@ void staleGrid()
     {
         for(j=0; j<GRIDSIZE; j++)
         {
-            if(grid[i][j] == 2)
-                grid[i][j] = 1;
+            if(grid[i][j] == CURRENT_READING)
+                grid[i][j] = WALL;
         }
     }
 }
@@ -342,7 +365,7 @@ void eraseGrid()
     {
         for(j=0; j<GRIDSIZE; j++)
         {
-            grid[i][j] = 0;
+            grid[i][j] = EMPTY;
         }
     }
 }
@@ -483,35 +506,42 @@ void displayGrid()
         for(j=0; j<GRIDSIZE; j++)
         {
             // Old wall seen here
-            if(grid[i][j] == 1)
+            if(grid[i][j] == WALL)
             {
                 grid_image[i][j][0] = 255;
                 grid_image[i][j][1] = 215;
                 grid_image[i][j][2] = 0;
             }
             // Current sensor reading
-            else if(grid[i][j] == 2)
+            else if(grid[i][j] == CURRENT_READING)
             {
                 grid_image[i][j][0] = 255;
                 grid_image[i][j][1] = 0;
                 grid_image[i][j][2] = 0;
             }
             // Inaccessible area
-            else if(grid[i][j] == 3)
+            else if(grid[i][j] == BLOCKED_SEEN)
             {
-                grid_image[i][j][0] = 0;
-                grid_image[i][j][1] = 255;
-                grid_image[i][j][2] = 0;
+                grid_image[i][j][0] = 148;
+                grid_image[i][j][1] = 0;
+                grid_image[i][j][2] = 211;
+            }
+            // Inaccessible area
+            else if(grid[i][j] == BLOCKED_EMPTY)
+            {
+                grid_image[i][j][0] = 148;
+                grid_image[i][j][1] = 0;
+                grid_image[i][j][2] = 211;
             }
             // Seen already
-            else if(grid[i][j] == 4)
+            else if(grid[i][j] == SEEN)
             {
                 grid_image[i][j][0] = 0;
                 grid_image[i][j][1] = 0;
                 grid_image[i][j][2] = 200;
             }
             // Where the robot itself has been
-            else if(grid[i][j] == 5)
+            else if(grid[i][j] == HAS_BEEN)
             {
                 grid_image[i][j][0] = 0;
                 grid_image[i][j][1] = 180;
@@ -553,7 +583,7 @@ void displayGrid()
     }
 
     // Display where the robot has been later
-    grid[curX][curY] = 5;
+    grid[curX][curY] = HAS_BEEN;
 
     // Display the robot's position in the map
     grid_image[curX][curY][0] = 255;
@@ -690,6 +720,7 @@ void set_curvature(float curvature, int speed)
 
 void time_step(int* depths)
 {
+    printf("In time step.\n");
     int i;
     float a, x, y, m, m2;
     float theta;
@@ -741,7 +772,9 @@ void time_step(int* depths)
 
     if(IS_SIM)
         getDepths(depths);
-        //generateDepths(depths);
+    //generateDepths(depths);
+
+    printf("In time step 3.\n");
 
     // For each depth, calculate the pose relative to our current position.
     for(i=0; i<640; i++)
@@ -800,8 +833,8 @@ void time_step(int* depths)
             if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
                 break;
 
-            if(grid[gridX][gridY] == 0)
-                grid[gridX][gridY] = 4;
+            if(grid[gridX][gridY] == EMPTY)
+                grid[gridX][gridY] = SEEN;
         }
 
         pose2D *point_seen = malloc(sizeof(pose2D));
@@ -815,6 +848,8 @@ void time_step(int* depths)
         drawOnGrid(point_seen);
     }
 
+
+    printf("End time step.\n");
 }
 
 /**
@@ -889,12 +924,18 @@ void DrawGLScene()
             xyz[idx][3] = 1;
             indices[i][j] = idx;
 
-            if(i >= 400)
-                depths[j] += depth[idx];
+            if(!IS_SIM)
+            {
+                if(i >= 400)
+                    depths[j] += (int)depth[idx];
+            }
         }
     }
-    for(i=0; i<640; i++)
-        depths[i] = depths[i] / 80;
+    if(!IS_SIM)
+    {
+        for(i=0; i<640; i++)
+            depths[i] = depths[i] / 80;
+    }
 
     float fx = 594.21f;
     float fy = 591.04f;
@@ -908,8 +949,6 @@ void DrawGLScene()
         0,       0,  0, a,
         -cx/fx, cy/fy, -1, b
     };
-
-
 
     /*
        GLfloat *convertedXYZ = multiplyMatrixTransposed(mat, (GLfloat*)xyz, 4, 4, 480*640);
@@ -944,6 +983,7 @@ void DrawGLScene()
     glTexCoord2f(0, 1); glVertex3f(570,428,0);
     glEnd();
 
+
     // Move the robot around, recalculate and such.
     staleGrid();
     time_step(depths);
@@ -957,12 +997,13 @@ void DrawGLScene()
 
 int main(int argc, char **argv)
 {
+    init_comm();
     loadMaze();
     cur_pos = malloc(sizeof(pose2D));
     cur_pos->x = 0;
     cur_pos->y = 0;
     cur_pos->theta = 0;
-    set_curvature(0.002, 0);
+    set_curvature(0.002, 50);
     //set_curvature(.003, 50);
 
     depth_mid = (uint8_t*)malloc(640*480*3);

@@ -39,7 +39,7 @@ void init_comm() {
 }
 
 void comm_send_msg(char *msg) {
-    if (IS_SIM) return;
+    //if (IS_SIM) return;
 
     write(STDOUT_FILENO, msg, strlen(msg));
     write(commfd, msg, strlen(msg));
