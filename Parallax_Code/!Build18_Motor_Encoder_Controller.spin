@@ -26,7 +26,6 @@ CON
   _xinfreq = 5_000_000
 
   _baudRateSpeed = 115_200
-  _newLineCharacter = 13
 
   _leftForward = 0
   _leftBackward = 1
@@ -63,7 +62,7 @@ PUB demo | deltaA, deltaB
     repeat
       result := com.receivedByte
       str.buildString(result)
-    while(result <> _newLineCharacter)
+    while(result <> 10)
     result := str.tokenizeString(str.trimString(str.builtString(true)))      
 
     ifnot(str.stringCompareCI(string("in"), result))
@@ -84,10 +83,10 @@ PUB demo | deltaA, deltaB
       deltaB += result
 
       com.transmitString(1 + str.integerToDecimal(result, 10))
-      com.transmitByte(_newLineCharacter)             
+      com.transmitString(string(13, 10))
       
     else
-      com.transmitString(string("IN <lft_duty> <rght_duty> [or] OUT (lft_delta) (rght_delta)", _newLineCharacter))
+      com.transmitString(string("IN <lft_duty> <rght_duty> [or] OUT (lft_delta) (rght_delta)", 13, 10))
       
 {{
 
