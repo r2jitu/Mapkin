@@ -1,4 +1,7 @@
-
+/**
+ * Authors: Alex Zirbel, Jitu Das, and the openKinect project. See
+ * grid_main.h for details.
+ */
 #include "grid_main.h"
 
 int window;
@@ -15,6 +18,7 @@ int motor_l_speed = 0;
 int motor_r_speed = 0;
 
 int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
+int maze[GRIDSIZE][GRIDSIZE] = {{0}};   // For simulation, mark boundary walls.
 char grid_image[GRIDSIZE][GRIDSIZE][3];
 
 typedef struct llnode {
@@ -72,6 +76,87 @@ void generateDepths(int* depths)
 }
 
 /**
+ * Reads the depths from the sim maze
+ */
+void getDepths(int* depths)
+{
+    int i;
+    float a, x, y, m, m2;
+    float theta;
+
+    for(i=0; i<640; i++)
+    {
+        theta = (((float)i)-320) / 320 * MAX_ANGLE;
+        theta += cur_pos->theta;
+        putAngleInBounds(&theta);
+
+        // Calculate the line in point-slope form
+        if(fabs(cos(theta)) < 0.0005)
+            m = 10000000;
+        else
+            m = sin(theta)/cos(theta);
+
+        if(fabs(sin(theta)) < 0.0005)
+            m2 = 10000000;
+        else
+            m2 = cos(theta)/sin(theta);
+
+        // determine quadrant
+        int xSign = 1;
+        int ySign = 1;
+        if(theta < PI && theta >= PI / 2)
+        {
+            xSign = -1;
+        }
+        else if(theta < 3*PI / 2 && theta >= PI)
+        {
+            xSign = ySign = -1;
+        }
+        else if(theta < 2*PI && theta >= 3*PI/2)
+        {
+            ySign = -1;
+        }
+
+        for(a=0; ; a+=.3)
+        {
+            int gridX, gridY;
+
+            // Use x if the line is more horizontal
+            if(abs(m) <= 1)
+            {
+                x = xSign * a + cur_pos->x;
+                y = m*(x - cur_pos->x) + cur_pos->y;
+            }
+            else
+            {
+                y = ySign * a + cur_pos->y;
+                x = m2*(y - cur_pos->y) + cur_pos->x;
+            }
+
+            gridX = (-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+            gridY = (-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+            if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
+            {
+                depths[i] = -1;
+                break;
+            }
+
+            if(maze[gridX][gridY] == 1)
+            {
+                depths[i] = sqrt(((x-cur_pos->x)*(x-cur_pos->x)) + ((y-cur_pos->y)*(y-cur_pos->y)));
+                break;
+            }
+            if(grid[gridX][gridY] == 0)
+            {
+                //grid[gridX][gridY] = 4;
+            }
+        }
+
+    }
+}
+
+/**
  * Multiplies two matrices with the specified dimensions.
  * m1w is the width of mat1, etc.
  */
@@ -118,6 +203,53 @@ void LoadVertexMatrix()
 }
 
 /**
+ * Draws a sample maze for simulation runs.
+ */
+void loadMaze()
+{
+    int i, j, a;
+    for(i=0; i<GRIDSIZE; i++)
+    {
+        for(j=0; j<GRIDSIZE; j++)
+        {
+            maze[i][j] = 0;
+        }
+    }
+
+    // Draw borders
+    for(a=0; a<GRIDSIZE; a++)
+    {
+        maze[0][a] = 1;
+        maze[GRIDSIZE-1][a] = 1;
+        maze[a][0] = 1;
+        maze[a][GRIDSIZE-1] = 1;
+    }
+
+    // Draw some walls
+    for(a=0; a<80; a++)
+    {
+        // horizontal
+        maze[80][a] = 1;
+        maze[80][a+160] = 1;
+        maze[80][a+240] = 1;
+        maze[160][a+240] = 1;
+        maze[240][a] = 1;
+        maze[240][a+80] = 1;
+        maze[240][a+240] = 1;
+        maze[320][a] = 1;
+
+        // vertical
+        maze[a+80][80] = 1;
+        maze[a][160] = 1;
+        maze[a+240][160] = 1;
+        maze[a+160][240] = 1;
+        maze[a+320][240] = 1;
+        maze[a+80][320] = 1;
+        maze[a+240][320] = 1;
+    }
+}
+
+/**
  * A quick way to transpose the second matrix, then multiply matrices as above.
  */
 GLfloat* multiplyMatrixTransposed(GLfloat* mat1, GLfloat* mat2,
@@ -142,6 +274,9 @@ GLfloat* multiplyMatrixTransposed(GLfloat* mat1, GLfloat* mat2,
     return result;
 }
 
+/**
+ * Prints out the data in a matrix of given height and width, for debugging.
+ */
 void displayMatrix(GLfloat* mat, int h, int w)
 {
     int i=0;
@@ -155,6 +290,9 @@ void displayMatrix(GLfloat* mat, int h, int w)
     printf("\n");
 }
 
+/**
+ * Prints out the x, y, theta of a pose2D, for debugging.
+ */
 void displayPose2D(pose2D *pose)
 {
     printf("[%f, %f, %f]", pose->x, pose->y, pose->theta);
@@ -172,7 +310,7 @@ void drawOnGrid(pose2D *point)
 
     int x = (-(point->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
     int y = (-(point->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-   // (GRIDSIZE/2) - (int)((point->x + .5)/CELL_WIDTH) - 1;
+    // (GRIDSIZE/2) - (int)((point->x + .5)/CELL_WIDTH) - 1;
     //int y = (GRIDSIZE/2) - (int)((point->y + .5)/CELL_WIDTH) - 1;
 
     if(x >= 0 && x < GRIDSIZE && y >= 0 && y < GRIDSIZE)
@@ -195,6 +333,10 @@ void staleGrid()
     }
 }
 
+/**
+ * Erases all readings from the grid. Note that origin and position are
+ * never erased.
+ */
 void eraseGrid()
 {
     int i, j;
@@ -228,6 +370,11 @@ void convertToFrame(pose2D* to_convert, pose2D* frame)
     putAngleInBounds(&(to_convert->theta));
 }
 
+/**
+ * Wingtips are the points that make the robot position look like an arrow rather
+ * than a dot when displayed.  Wingtips extend backward from the robot in any
+ * of 8 positions given the current angle.
+ */
 void getWingtips(int i, int j, int* wingtips)
 {
     if(cur_pos->theta < PI/8 || cur_pos->theta >= 15*PI/8)
@@ -320,6 +467,10 @@ void getWingtips(int i, int j, int* wingtips)
     }
 }
 
+/**
+ * Prints out the grid to the grid_image, which is constantly being displayed.
+ * Responsible for setting all the map colors.
+ */
 void displayGrid()
 {
     int i=0, j=0, a=0;
@@ -336,8 +487,8 @@ void displayGrid()
             // Old wall seen here
             if(grid[i][j] == 1)
             {
-                grid_image[i][j][0] = 0;
-                grid_image[i][j][1] = 0;
+                grid_image[i][j][0] = 255;
+                grid_image[i][j][1] = 215;
                 grid_image[i][j][2] = 0;
             }
             // Current sensor reading
@@ -347,37 +498,71 @@ void displayGrid()
                 grid_image[i][j][1] = 0;
                 grid_image[i][j][2] = 0;
             }
-            // Unexplored
-            else
+            // Inaccessible area
+            else if(grid[i][j] == 3)
+            {
+                grid_image[i][j][0] = 0;
+                grid_image[i][j][1] = 255;
+                grid_image[i][j][2] = 0;
+            }
+            // Seen already
+            else if(grid[i][j] == 4)
             {
                 grid_image[i][j][0] = 0;
                 grid_image[i][j][1] = 0;
-                grid_image[i][j][2] = 50;
+                grid_image[i][j][2] = 200;
+            }
+            // Where the robot itself has been
+            else if(grid[i][j] == 5)
+            {
+                grid_image[i][j][0] = 0;
+                grid_image[i][j][1] = 180;
+                grid_image[i][j][2] = 180;
+            }
+            // Unexplored (0 or anything else)
+            else
+            {
+                if(maze[i][j]==1)
+                {
+                    grid_image[i][j][0] = 0;
+                    grid_image[i][j][1] = 0;
+                    grid_image[i][j][2] = 130;
+                }
+                else
+                {
+                    grid_image[i][j][0] = 0;
+                    grid_image[i][j][1] = 0;
+                    grid_image[i][j][2] = 50;
+                }
             }
         }
     }
 
-    // The Origin
+    // Draw the Origin (the center of the grid)
     j=GRIDSIZE/2-1;
     for(i=GRIDSIZE/2-3; i<GRIDSIZE/2+2; i++)
     {
-    grid_image[i][j][0] = 0;
-    grid_image[i][j][1] = 200;
-    grid_image[i][j][2] = 200;
+        grid_image[i][j][0] = 0;
+        grid_image[i][j][1] = 200;
+        grid_image[i][j][2] = 200;
     }
     i=GRIDSIZE/2-1;
     for(j=GRIDSIZE/2-3; j<GRIDSIZE/2+2; j++)
     {
-    grid_image[i][j][0] = 0;
-    grid_image[i][j][1] = 200;
-    grid_image[i][j][2] = 200;
+        grid_image[i][j][0] = 0;
+        grid_image[i][j][1] = 200;
+        grid_image[i][j][2] = 200;
     }
+
+    // Display where the robot has been later
+    grid[curX][curY] = 5;
 
     // Display the robot's position in the map
     grid_image[curX][curY][0] = 255;
     grid_image[curX][curY][1] = 255;
     grid_image[curX][curY][2] = 255;
 
+    // Draw the wingtips on the robot, provided they stay on the grid.
     int wingtips[8] = {0};
     getWingtips(curX, curY, wingtips);
     for(a=0; a<8; a+=2)
@@ -483,53 +668,6 @@ void InitGL(int Width, int Height)
 }
 
 
-
-/*
-   int main(int argc, char **argv)
-   {
-
-   GLfloat mat1[16] = {
-   1.455,     0,  0, 0,
-   0,    -1.441,  0, 0,
-   0,       0,  0, 4.55,
-   -2.33, 2.33, -1, 4
-   };
-
-   GLfloat mat2[16] = {
-   0, 0, 0, 1,
-   0, 0, 1, 0,
-   0, 1, 0, 0,
-   1, 0, 0, 0 
-   };
-
-   GLfloat ID[16] = {
-   1, 0, 0, 0,
-   0, 1, 0, 0,
-   0, 0, 1, 0,
-   0, 0, 0, 1 
-   };
-
-   GLfloat mat3[6] = {
-   1, 2, 3,
-   2, 3, 4
-   };
-
-   GLfloat mat4[6] = {
-   3, 3,
-   2, 3,
-   8, 3
-   };
-
-   GLfloat* result = multiplyMatrix(mat3, mat4, 3, 2, 2);
-
-   printf("\n");
-   displayMatrix(result, 2, 2);
-   printf("\n");
-
-   return 0;
-   }
- */
-
 void set_motor_l(int speed)
 {
     if(speed < -100 || speed > 100)
@@ -580,28 +718,32 @@ void set_curvature(float curvature, int speed)
 void time_step()
 {
     int i;
+    float a, x, y, m, m2;
+    float theta;
+
     float encoder_l = ((float)motor_l_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
     float encoder_r = ((float)motor_r_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
     float dist_l = encoder_l / ENCODER_CLICKS_PER_CM;
     float dist_r = encoder_r / ENCODER_CLICKS_PER_CM;
 
-    // Linear approximation
-    /*    float d_theta = atan((dist_r - dist_l) / (2 * ROBOT_RADIUS));
-          printf("EncL: %f, EncR: %f, DstL: %f, DstR: %f, D theta: %f\n", encoder_l, encoder_r, dist_l, dist_r, d_theta);
-          float dy = 0;
-          float dx = (dist_r + dist_l) / 2;*/
-
     // Circular approximation
     float d_theta = (dist_r - dist_l)/(2 * ROBOT_RADIUS);
     printf("EncL: %f, EncR: %f, DstL: %f, DstR: %f, D theta: %f\n", encoder_l, encoder_r, dist_l, dist_r, d_theta);
-    float r_inner = dist_l/d_theta;
+
+    float chord_len;
+    if(d_theta < .0001) // Special case: nearly straight path
+    {
+        chord_len = dist_l;
+    }
+    else
+    {
+        float r_inner = dist_l/d_theta;
+        chord_len = 2 * (r_inner + ROBOT_RADIUS) * sin(d_theta / 2);
+    }
+
     float chord_theta = cur_pos->theta + (d_theta / 2);
     putAngleInBounds(&chord_theta);
 
-    float chord_len = 2 * (r_inner + ROBOT_RADIUS) * sin(d_theta / 2);
-
-    //float dy = chord_len * sin(chord_theta / 2);
-    //float dx = chord_len * cos(chord_theta / 2);
     float dy = chord_len * sin(chord_theta);
     float dx = chord_len * cos(chord_theta);
 
@@ -610,17 +752,74 @@ void time_step()
     cur_pos->theta = cur_pos->theta + d_theta;
     putAngleInBounds(&(cur_pos->theta));
 
-
     // Read the kinect to get depths and plot this on the map
     int depths[640] = {0};
-    generateDepths(depths);
+    //generateDepths(depths);
+    getDepths(depths);
 
     // For each depth, calculate the pose relative to our current position.
     for(i=0; i<640; i++)
     {
-        float max_angle = PI / 8;
+        if(depths[i] == -1)     // error code, no reading at this value
+            continue;
+
+        // Draw what we've seen up to the depth
+        theta = (((float)i)-320) / 320 * MAX_ANGLE;
+        theta += cur_pos->theta;
+        putAngleInBounds(&theta);
+
+        // Calculate the line in point-slope form
+        if(fabs(cos(theta)) < 0.0005)
+            m = 10000000;
+        else
+            m = sin(theta)/cos(theta);
+
+        if(fabs(sin(theta)) < 0.0005)
+            m2 = 10000000;
+        else
+            m2 = cos(theta)/sin(theta);
+
+        // determine quadrant
+        int xSign = 1;
+        int ySign = 1;
+        if(theta < PI && theta >= PI / 2)
+            xSign = -1;
+        else if(theta < 3*PI / 2 && theta >= PI)
+            xSign = ySign = -1;
+        else if(theta < 2*PI && theta >= 3*PI/2)
+            ySign = -1;
+
+        for(a=0; ; a+=.3)
+        {
+            int gridX, gridY;
+
+            // Use x if the line is more horizontal
+            if(abs(m) <= 1)
+            {
+                x = xSign * a + cur_pos->x;
+                y = m*(x - cur_pos->x) + cur_pos->y;
+            }
+            else
+            {
+                y = ySign * a + cur_pos->y;
+                x = m2*(y - cur_pos->y) + cur_pos->x;
+            }
+
+            if(sqrt(((x-cur_pos->x)*(x-cur_pos->x)) + ((y-cur_pos->y)*(y-cur_pos->y))) > depths[i])
+                break;
+
+            gridX = (-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+            gridY = (-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+            if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
+                break;
+
+            if(grid[gridX][gridY] == 0)
+                grid[gridX][gridY] = 4;
+        }
+
         pose2D *point_seen = malloc(sizeof(pose2D));
-        point_seen->theta = (((float)i)-320) / 320 * max_angle;
+        point_seen->theta = (((float)i)-320) / 320 * MAX_ANGLE;
         point_seen->x = depths[i] * cos(point_seen->theta);
         point_seen->y = depths[i] * sin(point_seen->theta);
 
@@ -632,35 +831,9 @@ void time_step()
 
 }
 
-
-
-
-
-
-
-// To test filling in the grid.
-/*
-   int main(int argc, char** argv)
-   {
-   cur_pos = malloc(sizeof(pose2D));
-   cur_pos->x = 0;
-   cur_pos->y = 0;
-   cur_pos->theta = 0;
-//    cur_pos->data = {GRIDSIZE/2, GRIDSIZE/2, 0};
-
-set_curvature(.01, 50);
-
-while(!die)
-{
-time_step();
-displayGrid();
-sleep(1);
-}
-
-return 0;
-}
+/**
+ * Called in a loop constantly to draw the displays.
  */
-
 void DrawGLScene()
 {
     // Move the robot around, recalculate and such.
@@ -675,7 +848,7 @@ void DrawGLScene()
     uint32_t ts;
     int i,j;
 
-    if (KINECT_ATTACHED)
+    if (!IS_SIM)
     {
         if (freenect_sync_get_depth((void**)&depth, &ts, 0, FREENECT_DEPTH_11BIT) < 0)
             no_kinect_quit();
@@ -732,7 +905,7 @@ void DrawGLScene()
             int idx = RCW_TO_IDX(i,j,640);
             xyz[idx][0] = j;
             xyz[idx][1] = i;
-            xyz[idx][2] = KINECT_ATTACHED ? depth[idx] : 0;
+            xyz[idx][2] = IS_SIM ? 0 : depth[idx];
             xyz[idx][3] = 1;
             indices[i][j] = idx;
         }
@@ -792,11 +965,13 @@ void DrawGLScene()
 
 int main(int argc, char **argv)
 {
+    loadMaze();
     cur_pos = malloc(sizeof(pose2D));
     cur_pos->x = 0;
     cur_pos->y = 0;
     cur_pos->theta = 0;
-    set_curvature(.003, 50);
+    set_curvature(0.002, 50);
+    //set_curvature(.003, 50);
 
     depth_mid = (uint8_t*)malloc(640*480*3);
     int i, j;
@@ -813,7 +988,6 @@ int main(int argc, char **argv)
             grid_image[i][j][2] = 0;
         }
     }
-
 
     glutInit(&argc, argv);
 
@@ -836,26 +1010,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-
-// Test converting between coordinate frames.
-/*int main(int argc, char** argv)
-{
-    pose2D *robot_frame = malloc(sizeof(pose2D));
-    robot_frame->x = 3;
-    robot_frame->y = 5;
-    robot_frame->theta = PI/2;
-    pose2D *point_in_robot = malloc(sizeof(pose2D));
-    point_in_robot->x = 10;
-    point_in_robot->y = 10;
-    point_in_robot->theta = PI;
-
-    printf("Original point, in robot frame ");
-    displayPose2D(robot_frame);
-    printf(":\n");
-    displayPose2D(point_in_robot);
-    printf("\nPoint in world frame:\n");
-    convertToFrame(point_in_robot, robot_frame);
-    displayPose2D(point_in_robot);
-    printf("\n");
-    return 0;
-}*/
