@@ -12,7 +12,10 @@
 #define WALL 3
 #define BLOCKED_EMPTY 4
 #define BLOCKED_SEEN 5
-#define HAS_BEEN 6
+#define VISITED 6
+
+#define MIN(a,b) ((a)>(b)?(b):(a))
+#define MAX(a,b) ((a)<(b)?(b):(a))
 
 int window;
 GLuint gl_depth_tex;
@@ -27,8 +30,13 @@ int die = 0;
 extern int motor_l_speed;
 extern int motor_r_speed;
 
+// Function declarations
+void displayGrid();
+void set_curvature(float curvature, int speed);
+
 int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
 int maze[GRIDSIZE][GRIDSIZE] = {{0}};   // For simulation, mark boundary walls.
+int approach_points[GRIDSIZE][GRIDSIZE] = {{0}};
 char grid_image[GRIDSIZE][GRIDSIZE][3];
 
 short *depth = 0;
@@ -48,8 +56,12 @@ typedef struct pose2D {
     //GLfloat data[3]; // x, y, theta
 } pose2D;
 
-pose2D *cur_pos = NULL;
+typedef struct gridPoint {
+    int x, y;
+} gridPoint;
 
+pose2D *cur_pos = NULL;
+gridPoint *goal_pos = NULL; // Stored in grid coordinates.
 
 void llAddLast(void *data) {
     llnode *node = malloc(sizeof(llnode));
@@ -162,6 +174,85 @@ void getDepths(int* depths)
         }
     }
 }
+
+/**
+ * Finds the nearest grid cell with color equal to color specified, and returns
+ * it in the same x and y that specify the original point to search from.
+ *
+ * A Breadth-First search.
+ * Color -1 means look for an adjacent point.
+ */
+void findNearest(int color, int *x, int *y)
+{
+    // My code: 1 means to search in this iteration.
+    // 2 Means to search in the next iteration.
+    // 3 Means already searched, now dead.
+    int i, j, a, b;
+    int to_search[GRIDSIZE][GRIDSIZE] = {{0}};
+    to_search[*x][*y] = 1;
+
+    while(moreToSearch(to_search))
+    {
+        for(i=0; i<GRIDSIZE; i++)
+        {
+            for(j=0; j<GRIDSIZE; j++)
+            {
+                if(to_search[i][j] == 1)
+                {
+                    // Check if this matches the color
+                    if(grid[i][j] == color ||
+                        (color == -1 && approach_points[i][j] == 1))
+                    {
+                        *x = i;
+                        *y = j;
+                        return;
+                    }
+
+                    // Label the cells to be searched next iteration
+                    for(a=MAX(0, i-1); a<MIN(GRIDSIZE, i+2); a++)
+                    {
+                        for(b=MAX(0, j-1); b<MIN(GRIDSIZE, j+2); b++)
+                        {
+                            if(to_search[a][b] == 0)
+                                to_search[a][b] = 2;
+                        }
+                    }
+
+                    // Label this node as checked
+                    to_search[i][j] = 3;
+                }
+            }
+        }
+
+        // Prepare for the next iteration
+        for(i=0; i<GRIDSIZE; i++)
+        {
+            for(j=0; j<GRIDSIZE; j++)
+            {
+                if(to_search[i][j] == 2)
+                    to_search[i][j] = 1;
+            }
+        }
+
+    }
+
+    // Error code for not found
+    *x = -1;
+    *y = -1;
+}
+
+/* Returns true if there are still 1's in the grid (assumed standard size)*/
+int moreToSearch(int* to_search)
+{
+    int i, j;
+    for(i=0; i<GRIDSIZE*GRIDSIZE; i++)
+    {
+        if(to_search[i] == 1)
+            return 1;
+    }
+    return 0;
+}
+
 
 /**
  * Multiplies two matrices with the specified dimensions.
@@ -305,9 +396,6 @@ void displayPose2D(pose2D *pose)
     printf("[%f, %f, %f]", pose->x, pose->y, pose->theta);
 }
 
-#define MIN(a,b) ((a)>(b)?(b):(a))
-#define MAX(a,b) ((a)<(b)?(b):(a))
-
 /**
  * Assuming the point is in the right frame (relative to the grid, with x upward
  * in the center of the grid, y left, theta counterclockwise from x
@@ -328,7 +416,9 @@ void drawOnGrid(pose2D *point)
         {
             if(sqrt((x-i)*(x-i) + (y-j)*(y-j)) <= ROBOT_RADIUS)
             {
-                if(grid[i][j] == EMPTY || grid[i][j] == SEEN)
+                if(grid[i][j] == EMPTY)
+                    grid[i][j] = BLOCKED_EMPTY;
+                else if(grid[i][j] == SEEN)
                     grid[i][j] = BLOCKED_SEEN;
             }
         }
@@ -389,6 +479,80 @@ void convertToFrame(pose2D* to_convert, pose2D* frame)
     to_convert->y = result[1];
     to_convert->theta = to_convert->theta + frame->theta;
     putAngleInBounds(&(to_convert->theta));
+}
+
+void setGoal()
+{
+    //printf("Setting new goal.\n");
+    float theta, m, m2, x, y, a;
+    int i, j;
+
+    // Clear approach points
+    for(i=0; i<GRIDSIZE; i++)
+        for(j=0; j<GRIDSIZE; j++)
+            approach_points[i][j] = 0;
+
+    int curX = (int)(-(cur_pos->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+    int curY = (int)(-(cur_pos->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+    findNearest(EMPTY, &curX, &curY);
+
+    goal_pos->x = curX;
+    goal_pos->y = curY;
+
+    for(theta=0; theta<2*PI; theta += .01)
+    {
+        // Calculate the line in point-slope form
+        if(fabs(cos(theta)) < 0.0005)
+            m = 10000000;
+        else
+            m = sin(theta)/cos(theta);
+
+        if(fabs(sin(theta)) < 0.0005)
+            m2 = 10000000;
+        else
+            m2 = cos(theta)/sin(theta);
+
+        // determine quadrant
+        int xSign = 1;
+        int ySign = 1;
+        if(theta < PI && theta >= PI / 2)
+            xSign = -1;
+        else if(theta < 3*PI / 2 && theta >= PI)
+            xSign = ySign = -1;
+        else if(theta < 2*PI && theta >= 3*PI/2)
+            ySign = -1;
+
+        for(a=0; ; a+=.3)
+        {
+            int gridX, gridY;
+
+            // Use x if the line is more horizontal
+            if(abs(m) <= 1)
+            {
+                x = xSign * a + goal_pos->x;
+                y = m*(x - goal_pos->x) + goal_pos->y;
+            }
+            else
+            {
+                y = ySign * a + goal_pos->y;
+                x = m2*(y - goal_pos->y) + goal_pos->x;
+            }
+
+            gridX = (int)x;  //(-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+            gridY = (int)y;  //(-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+            if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
+                break;
+
+            if(grid[gridX][gridY] == SEEN || grid[gridX][gridY] == VISITED || grid[gridX][gridY] == EMPTY
+                    || grid[gridX][gridY] == BLOCKED_SEEN || grid[gridX][gridY] == BLOCKED_EMPTY)
+                approach_points[gridX][gridY] = 1;
+            else
+                break;
+        }
+    }
+    //printf("Goal set.\n");
 }
 
 /**
@@ -488,6 +652,14 @@ void getWingtips(int i, int j, int* wingtips)
     }
 }
 
+int withinBounds(int x, int y)
+{
+    if(x < 0 || x >= GRIDSIZE || y < 0 || y >= GRIDSIZE)
+        return 0;
+
+    return 1;
+}
+
 /**
  * Prints out the grid to the grid_image, which is constantly being displayed.
  * Responsible for setting all the map colors.
@@ -498,8 +670,8 @@ void displayGrid()
     int curX = (int)(-(cur_pos->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
     int curY = (int)(-(cur_pos->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
 
-    printf("Current position: [%f %f %f]\n", cur_pos->x, cur_pos->y, cur_pos->theta);
-    printf("Current speed: [%d %d]\n", motor_l_speed, motor_r_speed);
+    //printf("Current position: [%f %f %f]\n", cur_pos->x, cur_pos->y, cur_pos->theta);
+    //printf("Current speed: [%d %d]\n", motor_l_speed, motor_r_speed);
 
     for(i=0; i<GRIDSIZE; i++)
     {
@@ -522,16 +694,16 @@ void displayGrid()
             // Inaccessible area
             else if(grid[i][j] == BLOCKED_SEEN)
             {
-                grid_image[i][j][0] = 148;
+                grid_image[i][j][0] = 108;
                 grid_image[i][j][1] = 0;
                 grid_image[i][j][2] = 211;
             }
             // Inaccessible area
             else if(grid[i][j] == BLOCKED_EMPTY)
             {
-                grid_image[i][j][0] = 148;
+                grid_image[i][j][0] = 65;
                 grid_image[i][j][1] = 0;
-                grid_image[i][j][2] = 211;
+                grid_image[i][j][2] = 134;
             }
             // Seen already
             else if(grid[i][j] == SEEN)
@@ -541,7 +713,7 @@ void displayGrid()
                 grid_image[i][j][2] = 200;
             }
             // Where the robot itself has been
-            else if(grid[i][j] == HAS_BEEN)
+            else if(grid[i][j] == VISITED)
             {
                 grid_image[i][j][0] = 0;
                 grid_image[i][j][1] = 180;
@@ -563,6 +735,14 @@ void displayGrid()
                     grid_image[i][j][2] = 50;
                 }
             }
+
+            // Draw an overlay for the approach points.
+            if(grid[i][j] == SEEN && approach_points[i][j] == 1)
+            {
+                for(a=0; a<=2; a++)
+                    grid_image[i][j][0] = (grid_image[i][j][0] + 20) % 255;
+            }
+
         }
     }
 
@@ -582,8 +762,30 @@ void displayGrid()
         grid_image[i][j][2] = 200;
     }
 
+    // Display the goal
+    if(goal_pos != NULL)
+    {
+        for(i=-2; i<=2; i++)
+        {
+            int x = goal_pos->x;
+            int y = goal_pos->y;
+            if(withinBounds(x + i, y + i))
+            {
+                grid_image[x + i][y + i][0] = 255;
+                grid_image[x + i][y + i][1] = 0;
+                grid_image[x + i][y + i][2] = 0;
+            }
+            if(withinBounds(x - i, y + i))
+            {
+                grid_image[x - i][y + i][0] = 255;
+                grid_image[x - i][y + i][1] = 0;
+                grid_image[x - i][y + i][2] = 0;
+            }
+        }
+    }
+
     // Display where the robot has been later
-    grid[curX][curY] = HAS_BEEN;
+    grid[curX][curY] = VISITED;
 
     // Display the robot's position in the map
     grid_image[curX][curY][0] = 255;
@@ -702,31 +904,170 @@ void set_curvature(float curvature, int speed)
     float rspeed = rspeed_cm_per_s * 100 / TOP_SPEED_CM_PER_S;
     float lspeed = 2 * speed - rspeed;
 
-    printf("Rspeed cm per s: %f, Rspeed: %f, Lspeed: %f\n", rspeed_cm_per_s, rspeed, lspeed);
+    //printf("Rspeed cm per s: %f, Rspeed: %f, Lspeed: %f\n", rspeed_cm_per_s, rspeed, lspeed);
 
     if(rspeed >= 100.5 || lspeed <= -100.5)
     {
-        rspeed = 100;
-        lspeed = -100;
+        rspeed = 50;
+        lspeed = -50;
     }
     else if(rspeed <= -100.5 || lspeed >= 100.5)
     {
-        rspeed = -100;
-        lspeed = 100;
+        rspeed = -50;
+        lspeed = 50;
     }
     set_motor_l((int)lspeed);
     set_motor_r((int)rspeed);
 }
 
+int goalReached()
+{
+    if(grid[goal_pos->x][goal_pos->y] == EMPTY)
+        return 0;
+
+    return 1;
+}
+
+/**
+ * Returns 1 if finished turning, 0 otherwise.
+ */
+int turnToPoint(gridPoint* point)
+{
+    float final_angle;
+
+    final_angle = atan((cur_pos->y - point->y) / (cur_pos->x - point->x));
+
+    if(abs(cur_pos->theta - final_angle) < PI/4)
+    {
+        set_curvature(.01, 0);
+        return 1;
+    }
+
+    set_curvature(1.0, 50);
+    return 0;
+}
+
+/**
+ * Comes up with a plan to see the goal point, and executes that plan.
+ */
+void executePlan(int* depths)
+{
+    int curX = (int)(-(cur_pos->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+    int curY = (int)(-(cur_pos->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Just drive at a curvature
+    set_curvature(-.1, 50);
+    return;
+
+    // Simple scenario: we are already somewhere where we can see the goal by turning.
+    if(approach_points[curX][curY] == 1)
+    {
+        set_curvature(1.0, 50);  // Turn in a tight spin
+        setGoal();
+    }
+    else
+    {
+        float depth = 0;
+        float theta = cur_pos->theta;
+        float m, m2, x, y, a;
+        // Calculate the line in point-slope form
+        if(fabs(cos(theta)) < 0.0005)
+            m = 10000000;
+        else
+            m = sin(theta)/cos(theta);
+
+        if(fabs(sin(theta)) < 0.0005)
+            m2 = 10000000;
+        else
+            m2 = cos(theta)/sin(theta);
+
+        // determine quadrant
+        int xSign = 1;
+        int ySign = 1;
+        if(theta < PI && theta >= PI / 2)
+            xSign = -1;
+        else if(theta < 3*PI / 2 && theta >= PI)
+            xSign = ySign = -1;
+        else if(theta < 2*PI && theta >= 3*PI/2)
+            ySign = -1;
+
+        for(a=0; ; a+=.3)
+        {
+            int gridX, gridY;
+
+            // Use x if the line is more horizontal
+            if(abs(m) <= 1)
+            {
+                x = xSign * a + curX;
+                y = m*(x - curX) + curY;
+            }
+            else
+            {
+                y = ySign * a + curY;
+                x = m2*(y - curY) + curX;
+            }
+
+            gridX = (int)x;  //(-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+            gridY = (int)y;  //(-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+            if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
+                break;
+
+            if(grid[gridX][gridY] == BLOCKED_SEEN || grid[gridX][gridY] == BLOCKED_EMPTY)
+            {
+                depth = a;
+     //           depth = sqrt((curX - gridX)*(curX - gridX) +
+      //              (cur_pos->y - gridY)*(cur_pos->y - gridY));
+                break;
+            }
+        }
+        printf("I see depth %f\n", depth);
+        // Check for collision soon
+        if(depth < 50)
+            set_curvature(1.0, 50);
+        else if(depth < 300)
+            set_curvature(-.1, 50);
+        else
+            set_curvature(0, 50);
+
+    /*    int goToX = curX;
+        int goToY = curY;
+        findNearest(-1, &goToX, &goToY);
+
+        gridPoint goToPoint;
+        goToPoint.x = goToX;
+        goToPoint.y = goToY;
+
+        if(turnToPoint(&goToPoint))
+        {
+            set_curvature(0, 50);
+        }*/
+
+        // Random movement?
+    }
+
+    //set_curvature(0.03, 0);  // Stop
+
+}
+
 void time_step(int* depths)
 {
-    printf("In time step.\n");
     int i;
     float a, x, y, m, m2;
     float theta;
 
     float encoder_l;
     float encoder_r;
+
+    if(goalReached() || goal_pos->x == -1)
+    {
+        printf("Goal reached!\n");
+        setGoal();
+    }
+
+    executePlan(depths);
 
     if(IS_SIM)
     {
@@ -773,8 +1114,6 @@ void time_step(int* depths)
     if(IS_SIM)
         getDepths(depths);
     //generateDepths(depths);
-
-    printf("In time step 3.\n");
 
     // For each depth, calculate the pose relative to our current position.
     for(i=0; i<640; i++)
@@ -835,6 +1174,8 @@ void time_step(int* depths)
 
             if(grid[gridX][gridY] == EMPTY)
                 grid[gridX][gridY] = SEEN;
+            else if(grid[gridX][gridY] == BLOCKED_EMPTY)
+                grid[gridX][gridY] = BLOCKED_SEEN;
         }
 
         pose2D *point_seen = malloc(sizeof(pose2D));
@@ -847,9 +1188,6 @@ void time_step(int* depths)
         // The point is now in the standard world frame - draw it on the grid.
         drawOnGrid(point_seen);
     }
-
-
-    printf("End time step.\n");
 }
 
 /**
@@ -999,11 +1337,17 @@ int main(int argc, char **argv)
 {
     init_comm();
     loadMaze();
+
     cur_pos = malloc(sizeof(pose2D));
     cur_pos->x = 0;
     cur_pos->y = 0;
     cur_pos->theta = 0;
-    set_curvature(0.01, 50);
+
+    goal_pos = malloc(sizeof(pose2D));
+    goal_pos->x = -1;
+    goal_pos->y = -1;
+
+    set_curvature(-0.1, 50);
     //set_curvature(.003, 50);
 
     depth_mid = (uint8_t*)malloc(640*480*3);

@@ -3,7 +3,7 @@ CC = gcc
 OBJDIR = obj
 TARGETDIR = .
 TARGET = MonkeyBot
-DEFINES = -DIS_SIM=1
+DEFINES = -DIS_SIM=0
 INCLUDES = -Ilibfreenect/include -Ilibfreenect/wrappers/c_sync 
 CPPFLAGS = $(DEFINES) $(INCLUDES)
 CFLAGS = -Wall -O2
