@@ -1003,7 +1003,7 @@ int main(int argc, char **argv)
     cur_pos->x = 0;
     cur_pos->y = 0;
     cur_pos->theta = 0;
-    set_curvature(0.002, 50);
+    set_curvature(0.01, 50);
     //set_curvature(.003, 50);
 
     depth_mid = (uint8_t*)malloc(640*480*3);

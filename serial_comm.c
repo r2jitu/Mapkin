@@ -58,7 +58,7 @@ int comm_read_msg(char *buf, int size) {
 
 void set_motors(int left, int right) {
     char msg[16];
-    sprintf(msg, "IN %d %d\r\n", left, right);
+    sprintf(msg, "IN %d %d\r\n", right, left);
     comm_send_msg(msg);
 }
 
