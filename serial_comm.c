@@ -1,9 +1,18 @@
+/**
+ * A utilities file for dealing with serial to communicate with motors and
+ * encoders.
+ *
+ * @author Jitu Das
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+
+#include "mapkin.h"
 
 #include "serial_comm.h"
 
