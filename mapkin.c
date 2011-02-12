@@ -1,6 +1,6 @@
 /**
  * Authors: Alex Zirbel, Jitu Das, and the openKinect project. See
- * grid_main.h for details.
+ * mapkin.h for details.
  */
 
 #include "mapkin.h"
@@ -16,7 +16,6 @@ int color = 1;          // Use the RGB texture or just draw it as color
 int count = 0;
 int die = 0;
 
-
 extern int motor_l_speed;
 extern int motor_r_speed;
 
@@ -26,7 +25,6 @@ void set_curvature(float curvature, int speed);
 
 int grid[GRIDSIZE][GRIDSIZE] = {{0}};   // Mark the places we have explored and seen a wall
 int maze[GRIDSIZE][GRIDSIZE] = {{0}};   // For simulation, mark boundary walls.
-int approach_points[GRIDSIZE][GRIDSIZE] = {{0}};
 char grid_image[GRIDSIZE][GRIDSIZE][3];
 
 short *depth = 0;
@@ -106,199 +104,6 @@ void loadMaze()
     }
 }
 
-
-void setGoal()
-{
-    //printf("Setting new goal.\n");
-    float theta, m, m2, x, y, a;
-    int i, j;
-
-
-    if(IS_SIM)
-    {
-    // Clear approach points
-    for(i=0; i<GRIDSIZE; i++)
-        for(j=0; j<GRIDSIZE; j++)
-        {
-            grid[i][j] = 0;
-            approach_points[i][j] = 0;
-        }
-    }
-
-    int curX = (int)(-(cur_pos->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-    int curY = (int)(-(cur_pos->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-
-    findNearest(grid, EMPTY, &curX, &curY);
-
-    goal_pos->x = curX;
-    goal_pos->y = curY;
-
-        // TODO: commented for demo
-        /*
-
-    for(theta=0; theta<2*PI; theta += .01)
-    {
-        // Calculate the line in point-slope form
-        if(fabs(cos(theta)) < 0.0005)
-            m = 10000000;
-        else
-            m = sin(theta)/cos(theta);
-
-        if(fabs(sin(theta)) < 0.0005)
-            m2 = 10000000;
-        else
-            m2 = cos(theta)/sin(theta);
-
-        // determine quadrant
-        int xSign = 1;
-        int ySign = 1;
-        if(theta < PI && theta >= PI / 2)
-            xSign = -1;
-        else if(theta < 3*PI / 2 && theta >= PI)
-            xSign = ySign = -1;
-        else if(theta < 2*PI && theta >= 3*PI/2)
-            ySign = -1;
-
-        for(a=0; ; a+=.3)
-        {
-            int gridX, gridY;
-
-            // Use x if the line is more horizontal
-            if(abs(m) <= 1)
-            {
-                x = xSign * a + goal_pos->x;
-                y = m*(x - goal_pos->x) + goal_pos->y;
-            }
-            else
-            {
-                y = ySign * a + goal_pos->y;
-                x = m2*(y - goal_pos->y) + goal_pos->x;
-            }
-
-            gridX = (int)x;  //(-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-            gridY = (int)y;  //(-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-
-            if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
-                break;
-
-            if(grid[gridX][gridY] == SEEN || grid[gridX][gridY] == VISITED || grid[gridX][gridY] == EMPTY
-                    || grid[gridX][gridY] == BLOCKED_SEEN || grid[gridX][gridY] == BLOCKED_EMPTY)
-                if(IS_SIM)
-                { }
-                    //approach_points[gridX][gridY] = 1;
-            else
-                break;
-        }
-    }
-    */
-    //printf("Goal set.\n");
-}
-
-/**
- * Wingtips are the points that make the robot position look like an arrow rather
- * than a dot when displayed.  Wingtips extend backward from the robot in any
- * of 8 positions given the current angle.
- */
-void getWingtips(int i, int j, int* wingtips)
-{
-    if(cur_pos->theta < PI/8 || cur_pos->theta >= 15*PI/8)
-    {
-        wingtips[0] = i+1;
-        wingtips[1] = j+1;
-        wingtips[2] = i+2;
-        wingtips[3] = j+2;
-        wingtips[4] = i+1;
-        wingtips[5] = j-1;
-        wingtips[6] = i+2;
-        wingtips[7] = j-2;
-    }
-    else if(cur_pos->theta < 3*PI/8)
-    {
-        wingtips[0] = i;
-        wingtips[1] = j+1;
-        wingtips[2] = i;
-        wingtips[3] = j+2;
-        wingtips[4] = i+1;
-        wingtips[5] = j;
-        wingtips[6] = i+2;
-        wingtips[7] = j;
-    }
-    else if(cur_pos->theta < 5*PI/8)
-    {
-        wingtips[0] = i-1;
-        wingtips[1] = j+1;
-        wingtips[2] = i-2;
-        wingtips[3] = j+2;
-        wingtips[4] = i+1;
-        wingtips[5] = j+1;
-        wingtips[6] = i+2;
-        wingtips[7] = j+2;
-    }
-    else if(cur_pos->theta < 7*PI/8)
-    {
-        wingtips[0] = i-1;
-        wingtips[1] = j;
-        wingtips[2] = i-2;
-        wingtips[3] = j;
-        wingtips[4] = i;
-        wingtips[5] = j+1;
-        wingtips[6] = i;
-        wingtips[7] = j+2;
-    }
-    else if(cur_pos->theta < 9*PI/8)
-    {
-        wingtips[0] = i-1;
-        wingtips[1] = j-1;
-        wingtips[2] = i-2;
-        wingtips[3] = j-2;
-        wingtips[4] = i-1;
-        wingtips[5] = j+1;
-        wingtips[6] = i-2;
-        wingtips[7] = j+2;
-    }
-    else if(cur_pos->theta < 11*PI/8)
-    {
-        wingtips[0] = i-1;
-        wingtips[1] = j;
-        wingtips[2] = i-2;
-        wingtips[3] = j;
-        wingtips[4] = i;
-        wingtips[5] = j-1;
-        wingtips[6] = i;
-        wingtips[7] = j-2;
-    }
-    else if(cur_pos->theta < 13*PI/8)
-    {
-        wingtips[0] = i-1;
-        wingtips[1] = j-1;
-        wingtips[2] = i-2;
-        wingtips[3] = j-2;
-        wingtips[4] = i+1;
-        wingtips[5] = j-1;
-        wingtips[6] = i+2;
-        wingtips[7] = j-2;
-    }
-    else
-    {
-        wingtips[0] = i;
-        wingtips[1] = j-1;
-        wingtips[2] = i;
-        wingtips[3] = j-2;
-        wingtips[4] = i+1;
-        wingtips[5] = j;
-        wingtips[6] = i+2;
-        wingtips[7] = j;
-    }
-}
-
-int withinBounds(int x, int y)
-{
-    if(x < 0 || x >= GRIDSIZE || y < 0 || y >= GRIDSIZE)
-        return 0;
-
-    return 1;
-}
-
 /**
  * Prints out the grid to the grid_image, which is constantly being displayed.
  * Responsible for setting all the map colors.
@@ -361,7 +166,7 @@ void displayGrid()
             // Unexplored (0 or anything else)
             else
             {
-                if(IS_SIM && maze[i][j]==1)
+                if(KINECT_SIM && maze[i][j]==1)
                 {
                     grid_image[i][j][0] = 0;
                     grid_image[i][j][1] = 0;
@@ -373,13 +178,6 @@ void displayGrid()
                     grid_image[i][j][1] = 0;
                     grid_image[i][j][2] = 50;
                 }
-            }
-
-            // Draw an overlay for the approach points.
-            if(grid[i][j] == SEEN && approach_points[i][j] == 1)
-            {
-                for(a=0; a<=2; a++)
-                    grid_image[i][j][0] = (grid_image[i][j][0] + 20) % 255;
             }
 
         }
@@ -433,7 +231,7 @@ void displayGrid()
 
     // Draw the wingtips on the robot, provided they stay on the grid.
     int wingtips[8] = {0};
-    getWingtips(curX, curY, wingtips);
+    getWingtips(curX, curY, wingtips, cur_pos);
     for(a=0; a<8; a+=2)
     {
         if(wingtips[a] >= 0 && wingtips[a+1] < GRIDSIZE
@@ -549,6 +347,9 @@ void set_curvature(float curvature, int speed)
 
 int goalReached()
 {
+    if(!withinBounds(goal_pos->x, goal_pos->y))
+        return 0;
+
     if(grid[goal_pos->x][goal_pos->y] == EMPTY)
         return 0;
 
@@ -588,14 +389,6 @@ void executePlan(int* depths)
     set_curvature(.003, 50);
     return;
 
-    // Simple scenario: we are already somewhere where we can see the goal by turning.
-    if(approach_points[curX][curY] == 1)
-    {
-        set_curvature(1.0, 50);  // Turn in a tight spin
-        setGoal();
-    }
-    else
-    {
         float depth = 0;
         float theta = cur_pos->theta;
         float m, m2, x, y, a;
@@ -673,7 +466,6 @@ void executePlan(int* depths)
               }*/
 
         // Random movement?
-    }
 
     //set_curvature(0.03, 0);  // Stop
 
@@ -688,7 +480,8 @@ void time_step(int* depths)
     float encoder_l;
     float encoder_r;
 
-    if(IS_SIM)
+    // Clears the screen after some number of time_steps, if demo mode.
+    if(DEMO_MODE)
     {
         count++;
         if(count > 150)
@@ -704,20 +497,21 @@ void time_step(int* depths)
         }
     }
 
-    // TODO: CHANGED FOR DEMO
-    /*if(IS_SIM && (goalReached() || goal_pos->x == -1))
+    // Drive to a new goal once we reach our current target
+    if(goalReached() || goal_pos->x == -1)
     {
         printf("Goal reached!\n");
-        setGoal();
-    }*/
+        setGoal(grid, cur_pos, goal_pos);
+    }
 
-    if(IS_SIM)
-        executePlan(depths);
+    executePlan(depths);
 
-    if(IS_SIM)
+    if(ENCODERS_SIM)
     {
-        encoder_l = ((float)motor_l_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
-        encoder_r = ((float)motor_r_speed) * TOP_SPEED_CM_PER_S * ENCODER_CLICKS_PER_CM / 100;
+        encoder_l = ((float)motor_l_speed) * TOP_SPEED_CM_PER_S *
+            ENCODER_CLICKS_PER_CM / 100;
+        encoder_r = ((float)motor_r_speed) * TOP_SPEED_CM_PER_S *
+            ENCODER_CLICKS_PER_CM / 100;
     }
     else
     {
@@ -756,7 +550,7 @@ void time_step(int* depths)
     cur_pos->theta = cur_pos->theta + d_theta;
     putAngleInBounds(&(cur_pos->theta));
 
-    if(IS_SIM)
+    if(KINECT_SIM)
         generateDepths(maze, cur_pos, depths);
 
     // For each depth, calculate the pose relative to our current position.
@@ -765,7 +559,7 @@ void time_step(int* depths)
         if(depths[i] == -1)     // error code, no reading at this value
             continue;
 
-        if(IS_SIM)
+        if(FULL_DISPLAY)
         {
             // Draw what we've seen up to the depth
             theta = (((float)i)-320) / 320 * MAX_ANGLE;
@@ -809,13 +603,15 @@ void time_step(int* depths)
                     x = m2*(y - cur_pos->y) + cur_pos->x;
                 }
 
-                if(sqrt(((x-cur_pos->x)*(x-cur_pos->x)) + ((y-cur_pos->y)*(y-cur_pos->y))) > depths[i])
+                if(sqrt(((x-cur_pos->x)*(x-cur_pos->x)) +
+                        ((y-cur_pos->y)*(y-cur_pos->y))) > depths[i])
                     break;
 
                 gridX = (-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
                 gridY = (-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
 
-                if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
+                if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0
+                        || gridY >= GRIDSIZE)
                     break;
 
                 if(grid[gridX][gridY] == EMPTY)
@@ -850,7 +646,7 @@ void DrawGLScene()
 
     /* Displays the image on the left: the Kinect depth readings.
      * Only displays if the Kinect is plugged in (not in sim mode) */
-    if (!IS_SIM)
+    if (!KINECT_SIM)
     {
         if (freenect_sync_get_depth((void**)&depth, &ts, 0, FREENECT_DEPTH_11BIT) < 0)
             no_kinect_quit();
@@ -902,26 +698,36 @@ void DrawGLScene()
 
     static unsigned int indices[480][640];
     static GLfloat xyz[480*640][4];
-    for (i = 0; i < 480; i++) {
-        for (j = 0; j < 640; j++) {
+
+
+    // Sum up the bottom 80 realistic readings
+    for (j = 0; j < 640; j++)
+    {
+        int numAccurateReadings = 0;
+
+        for (i = 400; i < 480; i++)
+        {
+            
             int idx = RCW_TO_IDX(i,j,640);
             xyz[idx][0] = j;
             xyz[idx][1] = i;
-            xyz[idx][2] = IS_SIM ? 0 : depth[idx];
+            xyz[idx][2] = KINECT_SIM ? 0 : depth[idx];
             xyz[idx][3] = 1;
             indices[i][j] = idx;
 
-            if(!IS_SIM)
+            if(!KINECT_SIM)
             {
-                if(i >= 400)
+                if((int)depth[idx] > 5)
+                {
                     depths[j] += (int)depth[idx];
+                    numAccurateReadings++;
+                }
             }
         }
-    }
-    if(!IS_SIM)
-    {
-        for(i=0; i<640; i++)
-            depths[i] = depths[i] / 80;
+        if(numAccurateReadings == 0)
+            depths[j] = -1;
+        else
+            depths[j] = depths[j] / numAccurateReadings;
     }
 
     float fx = 594.21f;
@@ -992,7 +798,7 @@ int main(int argc, char **argv)
     cur_pos->y = 0;
     cur_pos->theta = 0;
 
-    goal_pos = malloc(sizeof(pose2D));
+    goal_pos = malloc(sizeof(gridPoint));
     goal_pos->x = -1;
     goal_pos->y = -1;
 
@@ -1021,7 +827,7 @@ int main(int argc, char **argv)
     glutInitWindowSize(1000, 428);
     glutInitWindowPosition(0, 0);
 
-    window = glutCreateWindow("LibFreenect");
+    window = glutCreateWindow("Mapkin");
 
     glutDisplayFunc(&DrawGLScene);
     glutIdleFunc(&DrawGLScene);

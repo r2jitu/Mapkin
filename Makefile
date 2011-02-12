@@ -12,7 +12,7 @@ LIBS = -lGLU -lGL -lSM -lICE -lX11 -lXext -lglut -lXmu -lXi -lusb-1.0 -lpthread 
 
 all: mapkin serial_test
 
-mapkin: matrix_util.c.o grid_util.c.o planning_util.c.o sim_util.c.o mapkin.c.o serial_comm.c.o
+mapkin: matrix_util.c.o display_util.c grid_util.c.o planning_util.c.o sim_util.c.o mapkin.c.o serial_comm.c.o
 	$(CC) -g -o $@ $(LDFLAGS) $(LIBS) $^
 
 serial_test: serial_comm.c.o serial_test.c.o
