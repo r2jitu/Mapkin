@@ -104,6 +104,7 @@ void loadMaze()
     }
 }
 
+
 /**
  * Prints out the grid to the grid_image, which is constantly being displayed.
  * Responsible for setting all the map colors.
@@ -389,83 +390,84 @@ void executePlan(int* depths)
     set_curvature(.003, 50);
     return;
 
-        float depth = 0;
-        float theta = cur_pos->theta;
-        float m, m2, x, y, a;
-        // Calculate the line in point-slope form
-        if(fabs(cos(theta)) < 0.0005)
-            m = 10000000;
-        else
-            m = sin(theta)/cos(theta);
+    float depth = 0;
+    float theta = cur_pos->theta;
+    float m, m2, x, y, a;
 
-        if(fabs(sin(theta)) < 0.0005)
-            m2 = 10000000;
-        else
-            m2 = cos(theta)/sin(theta);
+    // Calculate the line in point-slope form
+    if(fabs(cos(theta)) < 0.0005)
+        m = 10000000;
+    else
+        m = sin(theta)/cos(theta);
 
-        // determine quadrant
-        int xSign = 1;
-        int ySign = 1;
-        if(theta < PI && theta >= PI / 2)
-            xSign = -1;
-        else if(theta < 3*PI / 2 && theta >= PI)
-            xSign = ySign = -1;
-        else if(theta < 2*PI && theta >= 3*PI/2)
-            ySign = -1;
+    if(fabs(sin(theta)) < 0.0005)
+        m2 = 10000000;
+    else
+        m2 = cos(theta)/sin(theta);
 
-        for(a=0; ; a+=.3)
+    // determine quadrant
+    int xSign = 1;
+    int ySign = 1;
+    if(theta < PI && theta >= PI / 2)
+        xSign = -1;
+    else if(theta < 3*PI / 2 && theta >= PI)
+        xSign = ySign = -1;
+    else if(theta < 2*PI && theta >= 3*PI/2)
+        ySign = -1;
+
+    for(a=0; ; a+=.3)
+    {
+        int gridX, gridY;
+
+        // Use x if the line is more horizontal
+        if(abs(m) <= 1)
         {
-            int gridX, gridY;
-
-            // Use x if the line is more horizontal
-            if(abs(m) <= 1)
-            {
-                x = xSign * a + curX;
-                y = m*(x - curX) + curY;
-            }
-            else
-            {
-                y = ySign * a + curY;
-                x = m2*(y - curY) + curX;
-            }
-
-            gridX = (int)x;  //(-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-            gridY = (int)y;  //(-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
-
-            if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
-                break;
-
-            if(grid[gridX][gridY] == BLOCKED_SEEN || grid[gridX][gridY] == BLOCKED_EMPTY)
-            {
-                depth = a;
-                //           depth = sqrt((curX - gridX)*(curX - gridX) +
-                //              (cur_pos->y - gridY)*(cur_pos->y - gridY));
-                break;
-            }
+            x = xSign * a + curX;
+            y = m*(x - curX) + curY;
         }
-        //printf("I see depth %f\n", depth);
-        // Check for collision soon
-        if(depth < 50)
-            set_curvature(1.0, 50);
-        else if(depth < 300)
-            set_curvature(-.1, 50);
         else
-            set_curvature(0, 50);
+        {
+            y = ySign * a + curY;
+            x = m2*(y - curY) + curX;
+        }
 
-        /*    int goToX = curX;
-              int goToY = curY;
-              findNearest(-1, &goToX, &goToY);
+        gridX = (int)x;  //(-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+        gridY = (int)y;  //(-(y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
 
-              gridPoint goToPoint;
-              goToPoint.x = goToX;
-              goToPoint.y = goToY;
+        if(gridX < 0 || gridX >= GRIDSIZE || gridY < 0 || gridY >= GRIDSIZE)
+            break;
 
-              if(turnToPoint(&goToPoint))
-              {
-              set_curvature(0, 50);
-              }*/
+        if(grid[gridX][gridY] == BLOCKED_SEEN || grid[gridX][gridY] == BLOCKED_EMPTY)
+        {
+            depth = a;
+            //           depth = sqrt((curX - gridX)*(curX - gridX) +
+            //              (cur_pos->y - gridY)*(cur_pos->y - gridY));
+            break;
+        }
+    }
+    //printf("I see depth %f\n", depth);
+    // Check for collision soon
+    if(depth < 50)
+        set_curvature(1.0, 50);
+    else if(depth < 300)
+        set_curvature(-.1, 50);
+    else
+        set_curvature(0, 50);
 
-        // Random movement?
+    /*    int goToX = curX;
+          int goToY = curY;
+          findNearest(-1, &goToX, &goToY);
+
+          gridPoint goToPoint;
+          goToPoint.x = goToX;
+          goToPoint.y = goToY;
+
+          if(turnToPoint(&goToPoint))
+          {
+          set_curvature(0, 50);
+          }*/
+
+    // Random movement?
 
     //set_curvature(0.03, 0);  // Stop
 
@@ -579,7 +581,7 @@ void time_step(int* depths)
             if(fabs(cos(theta)) < 0.0005)
                 m = 10000000;
             else
-               m = sin(theta)/cos(theta);
+                m = sin(theta)/cos(theta);
 
             if(fabs(sin(theta)) < 0.0005)
                 m2 = 10000000;
@@ -613,7 +615,7 @@ void time_step(int* depths)
                 }
 
                 if(sqrt(((x-cur_pos->x)*(x-cur_pos->x)) +
-                        ((y-cur_pos->y)*(y-cur_pos->y))) > depths[i])
+                            ((y-cur_pos->y)*(y-cur_pos->y))) > depths[i])
                     break;
 
                 gridX = (-(x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
@@ -716,7 +718,7 @@ void DrawGLScene()
 
         for (i = 400; i < 480; i++)
         {
-            
+
             int idx = RCW_TO_IDX(i,j,640);
             xyz[idx][0] = j;
             xyz[idx][1] = i;

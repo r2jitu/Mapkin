@@ -89,14 +89,16 @@
  * represented with as much information as possible.  X is measured forward
  * from the robot's coordinate frame, y to the left, and theta is
  * counterclockwise from x to y. */
-typedef struct pose2D {
+typedef struct pose2D
+{
     float x, y, theta;
 } pose2D;
 
 /* A grid point is the array location of a point, as stored in the image to be
  * displayed.  This means that x is measured horizontally and y vertically,
  * from the top left corner of the array. */
-typedef struct gridPoint {
+typedef struct gridPoint 
+{
     int x, y;
 } gridPoint;
 

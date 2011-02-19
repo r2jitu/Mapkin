@@ -185,6 +185,19 @@ void eraseGrid(int* grid)
 }
 
 /**
+ * Converts a pose2D in precise coordinates to a gridPoint in the image
+ * coordinates.
+ */
+gridPoint* pose2DtoGridPoint(pose2D * pose)
+{
+    gridPoint* out = (gridPoint*)malloc(sizeof(gridPoint));
+    out->x = (int)(-(pose->x/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+    out->y = (int)(-(pose->y/CELL_WIDTH) + (GRIDSIZE/2) - .5);
+
+    return out;
+}
+
+/**
  * Converts the pose to convert into the world frame, assuming it is currently
  * in the "frame" frame.
  */
@@ -204,3 +217,5 @@ void convertToFrame(pose2D* to_convert, pose2D* frame)
     to_convert->theta = to_convert->theta + frame->theta;
     putAngleInBounds(&(to_convert->theta));
 }
+
+
