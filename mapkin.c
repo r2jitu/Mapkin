@@ -471,6 +471,10 @@ void executePlan(int* depths)
 
 }
 
+/**
+ * Run every time step, one of the most important functions because
+ * it makes the rest of the function calls.
+ */
 void time_step(int* depths)
 {
     int i, j;
@@ -550,8 +554,13 @@ void time_step(int* depths)
     cur_pos->theta = cur_pos->theta + d_theta;
     putAngleInBounds(&(cur_pos->theta));
 
+    /* Depths are already set by this point, if not simulation.  If we are
+     * in simulation, the following call sets depths. */
+
     if(KINECT_SIM)
         generateDepths(maze, cur_pos, depths);
+
+    /* Priya's code */
 
     // For each depth, calculate the pose relative to our current position.
     for(i=0; i<640; i++)
@@ -570,7 +579,7 @@ void time_step(int* depths)
             if(fabs(cos(theta)) < 0.0005)
                 m = 10000000;
             else
-                m = sin(theta)/cos(theta);
+               m = sin(theta)/cos(theta);
 
             if(fabs(sin(theta)) < 0.0005)
                 m2 = 10000000;
